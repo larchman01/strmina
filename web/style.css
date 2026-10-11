@@ -1,0 +1,95 @@
+:root {
+  --bg: rgba(255, 255, 255, 0.94);
+  --fg: #1f2a33;
+  --muted: #5b6770;
+  --line: rgba(0, 0, 0, 0.1);
+  --accent: #2b6cb0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: rgba(28, 34, 40, 0.94);
+    --fg: #e8edf1;
+    --muted: #9aa6af;
+    --line: rgba(255, 255, 255, 0.12);
+    --accent: #7ab3ef;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--fg);
+  background: #1f2a33;
+}
+
+#map { position: absolute; inset: 0; }
+
+#panel {
+  position: absolute;
+  left: 12px;
+  bottom: calc(28px + env(safe-area-inset-bottom));
+  width: min(340px, calc(100% - 24px));
+  background: var(--bg);
+  border-radius: 12px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+#panel-toggle {
+  all: unset;
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+#panel-toggle .chev { transition: transform 0.2s; }
+#panel.collapsed .chev { transform: rotate(180deg); }
+#panel.collapsed #panel-body { display: none; }
+
+#panel-body { padding: 0 14px 12px; }
+
+.legend { display: flex; border-radius: 6px; overflow: hidden; margin-bottom: 10px; }
+.legend div {
+  flex: 1;
+  padding: 4px 0;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1f2a33;
+}
+
+.row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+.row input[type=range] { flex: 1; }
+.toggles { flex-wrap: wrap; gap: 6px 14px; }
+.toggles label { display: flex; align-items: center; gap: 4px; }
+.toggles > span { color: var(--muted); }
+
+.note { font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+.note a, .attrib a { color: var(--accent); }
+.attrib { font-size: 11px; color: var(--muted); margin: 0; }
+
+#readout {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg);
+  border-radius: 12px;
+  padding: 8px 16px;
+  text-align: center;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
+  min-width: 140px;
+}
+#readout .big { font-size: 28px; font-weight: 700; line-height: 1.1; }
+#readout .small { color: var(--muted); }
+#readout .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+.maplibregl-ctrl-attrib { font-size: 10px; }
