@@ -4,6 +4,8 @@ Prototip karte naklonov za turno smučanje in gorništvo v Sloveniji, izdelane i
 LiDAR podatkov **CLSS 2023–2025** (Geodetska uprava RS). Trenutno pokriva **Krvavec**
 (20 km², listi 461–465 × 127–130 v D96/TM).
 
+**Preizkusi:** <https://larchman01.github.io/strmina/> (deluje tudi na telefonu, z GPS)
+
 Funkcije:
 - plast naklonov v razredih 27–30°, 30–35°, 35–40°, 40–45° in >45°
 - tap na karto prikaže naklon, ekspozicijo in nadmorsko višino (izračun v brskalniku iz ploščic DEM)
