@@ -1,8 +1,13 @@
-import { addProtocol } from 'maplibre-gl';
+// Višine za 3D teren in senčenje: Mapterhorn (Terrarium WebP, 512 px, Cloudflare CDN). Za Slovenijo in
+// Avstrijo vsebuje LiDAR 1 m (ARSO, BEV), drugje Copernicus GLO-30.
+export const TERRAIN_TILES = 'https://tiles.mapterhorn.com/{z}/{x}/{y}.webp';
+export const TERRAIN_TILE_SIZE = 512;
+export const TERRAIN_MAX_ZOOM = 16;
+export const TERRAIN_ATTRIBUTION = '<a href="https://mapterhorn.com/attribution">© Mapterhorn</a>';
 
-// Višinske ploščice (Terrarium). Kjer imamo LiDAR, jih beremo iz aplikacije, drugje iz AWS Terrain Tiles.
-const AWS_TERRARIUM = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
-export const DEM_MAX_ZOOM = 15;
+// Poizvedbe naklona tečejo na mreži ploščic 256 px pri z15 (~3,3 m). Na naših LiDAR območjih beremo
+// lastne ploščice (enak vir kot barve naklonov), drugje Mapterhornove 512 px, povprečene 2 x 2.
+const QUERY_ZOOM = 15;
 const TILE = 256;
 export const ASPECTS = ['S', 'SV', 'V', 'JV', 'J', 'JZ', 'Z', 'SZ'];
 
@@ -49,6 +54,29 @@ export function tileInRegions(meta, z, x, y) {
   return meta.regions.some(r => intersects(b, r.bounds));
 }
 
+async function decodeTerrarium(buf, type, size) {
+  const bmp = await createImageBitmap(new Blob([buf], { type }));
+  const ctx = new OffscreenCanvas(size, size).getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(bmp, 0, 0, size, size);
+  const d = ctx.getImageData(0, 0, size, size).data;
+  const h = new Float32Array(size * size);
+  for (let i = 0; i < h.length; i++) h[i] = d[i * 4] * 256 + d[i * 4 + 1] + d[i * 4 + 2] / 256 - 32768;
+  return h;
+}
+
+/** 512 x 512 -> 256 x 256 s povprečjem 2 x 2. */
+function downsample2(h, size) {
+  const half = size / 2;
+  const out = new Float32Array(half * half);
+  for (let y = 0; y < half; y++) {
+    for (let x = 0; x < half; x++) {
+      const i = 2 * y * size + 2 * x;
+      out[y * half + x] = (h[i] + h[i + 1] + h[i + size] + h[i + size + 1]) / 4;
+    }
+  }
+  return out;
+}
+
 export class Dem {
   /** coverage: GeoJSON z obrisi dejanskih LiDAR podatkov (properties.source). */
   constructor(meta, coverage, baseUrl) {
@@ -73,44 +101,26 @@ export class Dem {
     return null;
   }
 
-  async fetchTile(z, x, y, signal) {
-    if (this.hasLidar(z, x, y)) {
-      const local = await fetchLocalPng(`${this.baseUrl}tiles/dem/${z}/${x}/${y}.png`, signal);
-      if (local) return local;
-    }
-    const url = AWS_TERRARIUM.replace('{z}', z).replace('{x}', x).replace('{y}', y);
-    const res = await fetch(url, { signal });
-    if (!res.ok) throw new Error(`DEM ${z}/${x}/${y}: ${res.status}`);
-    return res.arrayBuffer();
-  }
-
-  /** Registrira protokol dem://{z}/{x}/{y} za vire raster-dem. */
-  registerProtocol() {
-    addProtocol('dem', async (params, abortController) => {
-      const [z, x, y] = params.url.slice('dem://'.length).split('/').map(Number);
-      return { data: await this.fetchTile(z, x, y, abortController.signal) };
-    });
-  }
-
   tileHeights(x, y) {
     const key = `${x}/${y}`;
     if (!this.heights.has(key)) {
       if (this.heights.size > 64) this.heights.delete(this.heights.keys().next().value);
-      this.heights.set(key, this.decode(DEM_MAX_ZOOM, x, y));
+      this.heights.set(key, this.loadHeights(x, y));
     }
     return this.heights.get(key);
   }
 
-  async decode(z, x, y) {
+  async loadHeights(x, y) {
     try {
-      const buf = await this.fetchTile(z, x, y);
-      const bmp = await createImageBitmap(new Blob([buf], { type: 'image/png' }));
-      const ctx = new OffscreenCanvas(TILE, TILE).getContext('2d', { willReadFrequently: true });
-      ctx.drawImage(bmp, 0, 0);
-      const d = ctx.getImageData(0, 0, TILE, TILE).data;
-      const h = new Float32Array(TILE * TILE);
-      for (let i = 0; i < h.length; i++) h[i] = d[i * 4] * 256 + d[i * 4 + 1] + d[i * 4 + 2] / 256 - 32768;
-      return h;
+      if (this.hasLidar(QUERY_ZOOM, x, y)) {
+        const local = await fetchLocalPng(`${this.baseUrl}tiles/dem/${QUERY_ZOOM}/${x}/${y}.png`);
+        if (local) return decodeTerrarium(local, 'image/png', TILE);
+      }
+      const url = TERRAIN_TILES.replace('{z}', QUERY_ZOOM).replace('{x}', x).replace('{y}', y);
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const h = await decodeTerrarium(await res.arrayBuffer(), 'image/webp', TERRAIN_TILE_SIZE);
+      return downsample2(h, TERRAIN_TILE_SIZE);
     } catch {
       return null;
     }
@@ -125,7 +135,7 @@ export class Dem {
 
   /** Naklon, ekspozicija in višina v točki (Hornova metoda na oknu 3x3, ~3 m piksli). */
   async query(lng, lat) {
-    const n = TILE * 2 ** DEM_MAX_ZOOM;
+    const n = TILE * 2 ** QUERY_ZOOM;
     const r = (lat * Math.PI) / 180;
     const px = Math.floor(((lng + 180) / 360) * n);
     const py = Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n);

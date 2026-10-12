@@ -203,7 +203,7 @@ export class PlaceCard {
 
   setSource(info) {
     const src = this.$('.src');
-    src.textContent = info?.source ? `LiDAR · ${info.source}` : 'grob model';
+    src.textContent = info?.source ? `LiDAR · ${info.source}` : 'Mapterhorn';
     src.classList.toggle('coarse', !info?.source);
   }
 

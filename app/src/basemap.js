@@ -1,4 +1,4 @@
-import { DEM_MAX_ZOOM } from './dem.js';
+import { TERRAIN_TILES, TERRAIN_TILE_SIZE, TERRAIN_MAX_ZOOM, TERRAIN_ATTRIBUTION } from './dem.js';
 
 // Umirjena vektorska podlaga (OpenFreeMap, brez ključa, dovoljena tudi komercialna raba).
 const BASE_STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
@@ -55,7 +55,6 @@ export function composeStyle(base, meta, coverage) {
   const baseLayerIds = style.layers
     .filter(l => l.type !== 'background' && l.layout?.visibility !== 'none')
     .map(l => l.id);
-  const dem = { type: 'raster-dem', tiles: ['dem://{z}/{x}/{y}'], tileSize: 256, encoding: 'terrarium', maxzoom: DEM_MAX_ZOOM };
 
   style.sky = {
     'sky-color': '#9cc3ea',
@@ -68,8 +67,15 @@ export function composeStyle(base, meta, coverage) {
   style.terrain = { source: 'terrain', exaggeration: 1 };
   Object.assign(style.sources, {
     topo: TOPO,
-    terrain: { ...dem, attribution: 'Višine: GURS CLSS 2023–25, BEV, AWS Terrain Tiles' },
-    hillshade: dem,
+    // En vir za 3D teren in senčenje, da se ploščice ne nalagajo dvakrat.
+    terrain: {
+      type: 'raster-dem',
+      tiles: [TERRAIN_TILES],
+      tileSize: TERRAIN_TILE_SIZE,
+      encoding: 'terrarium',
+      maxzoom: TERRAIN_MAX_ZOOM,
+      attribution: TERRAIN_ATTRIBUTION,
+    },
     slope: {
       type: 'raster',
       tiles: ['slope://{z}/{x}/{y}'],
@@ -98,7 +104,7 @@ export function composeStyle(base, meta, coverage) {
     {
       id: 'hillshade',
       type: 'hillshade',
-      source: 'hillshade',
+      source: 'terrain',
       paint: {
         'hillshade-exaggeration': 0.35,
         'hillshade-shadow-color': '#46525c',

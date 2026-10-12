@@ -6,8 +6,9 @@ Viri (vsak se uporabi, kjer obstaja; CLSS ima prednost):
 
 Izhod (v ``app/public``):
   tiles/slope/{z}/{x}/{y}.png  razredi naklona (paleta), Web Mercator, 256 px
-  tiles/dem/{z}/{x}/{y}.png    višine (Terrarium) za 3D teren, senčenje in poizvedbe; na robu
-                               podatkov mehak prehod v AWS Terrain Tiles
+  tiles/dem/15/{x}/{y}.png     višine (Terrarium) za poizvedbe naklona v aplikaciji; na robu
+                               podatkov mehak prehod v Mapterhorn (3D teren riše aplikacija
+                               neposredno z Mapterhorna)
   data/meta.json               območja, povečave, razredi
   data/coverage.geojson        obrisi dejanskih LiDAR podatkov
 
@@ -40,18 +41,18 @@ RAW_DIR = ROOT / "data" / "raw"
 BEV_DIR = RAW_DIR / "bev"
 OUT_DIR = ROOT / "app" / "public" / "tiles"
 DATA_DIR = ROOT / "app" / "public" / "data"
-CACHE_DIR = ROOT / "data" / "cache" / "terrarium"
+CACHE_DIR = ROOT / "data" / "cache" / "mapterhorn"
 REGIONS = ROOT / "scripts" / "regions.json"
 
 CLSS_SHEET = 1000.0
 SLOPE_ZOOMS = range(12, 17)  # z17+ MapLibre poveča iz z16; naklon je itak zglajen na ~5 m
-DEM_ZOOMS = range(10, 16)
+DEM_ZOOMS = range(15, 16)  # samo za poizvedbe; teren riše aplikacija z Mapterhorna
 TILE = 256
 WORLD = 20037508.342789244
 DEM_STEP = 0.125  # zaokroževanje višin v ploščicah (m) – manjše datoteke, natančnost zadošča
 
-AWS_TERRARIUM = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
-FEATHER_M = 60.0      # širina prehoda med LiDAR in AWS višinami
+MAPTERHORN = "https://tiles.mapterhorn.com/{z}/{x}/{y}.webp"  # Terrarium, 512 px
+FEATHER_M = 60.0      # širina prehoda med LiDAR in Mapterhorn višinami
 COVERAGE_CELL_M = 20  # ločljivost maske za obrise pokritosti
 
 # (spodnja meja v stopinjah, RGBA). Pod prvo mejo je prosojno.
@@ -175,7 +176,7 @@ class Region:
         del gx, gy, z
         self.dem_smooth = smooth_nan(self.dem, sigma=1.0 / self.res)
 
-        # utež za prehod v AWS: oddaljenost od roba podatkov, na grobi mreži
+        # utež za prehod v Mapterhorn: oddaljenost od roba podatkov, na grobi mreži
         k = max(1, int(round(COVERAGE_CELL_M / self.res)))
         rows, cols = self.rows // k, self.cols // k
         coarse = valid[: rows * k, : cols * k].reshape(rows, k, cols, k).all(axis=(1, 3))
@@ -248,14 +249,17 @@ def classify(slope):
 
 
 def fetch_terrarium(z, x, y):
-    path = CACHE_DIR / str(z) / str(x) / f"{y}.png"
+    """Višine Mapterhorn za ploščico z/x/y na mreži 256 px (512 px povprečeno 2 x 2)."""
+    path = CACHE_DIR / str(z) / str(x) / f"{y}.webp"
     if not path.exists():
-        r = requests.get(AWS_TERRARIUM.format(z=z, x=x, y=y), timeout=60)
+        r = requests.get(MAPTERHORN.format(z=z, x=x, y=y), timeout=60)
         r.raise_for_status()
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(r.content)
     a = np.asarray(Image.open(path).convert("RGB"), dtype=np.float64)
-    return a[..., 0] * 256 + a[..., 1] + a[..., 2] / 256 - 32768
+    h = a[..., 0] * 256 + a[..., 1] + a[..., 2] / 256 - 32768
+    n = h.shape[0] // TILE
+    return h.reshape(TILE, n, TILE, n).mean(axis=(1, 3)) if n > 1 else h
 
 
 def encode_terrarium(h):
@@ -302,7 +306,7 @@ def build_dem_tiles(regions):
                 h[take] = hr[take]
                 w[take] = wr[take]
             if not w.any():
-                continue  # brez LiDAR: aplikacija vzame AWS neposredno
+                continue  # brez LiDAR: aplikacija vzame Mapterhorn neposredno
             out = w * h + (1 - w) * fetch_terrarium(z, x, y)
             p = OUT_DIR / "dem" / str(z) / str(x) / f"{y}.png"
             p.parent.mkdir(parents=True, exist_ok=True)

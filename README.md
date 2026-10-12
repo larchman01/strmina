@@ -6,7 +6,8 @@ Podrobni nakloni iz LiDAR so zaenkrat izdelani za **Krvavec** (CLSS) in **avstri
 Karavank** (BEV). 3D teren, oznake vrhov in iskanje pokrivajo vso Slovenijo z obmejnim pasom.
 
 Funkcije:
-- 3D teren že ob zagonu (LiDAR na Krvavcu, drugje AWS Terrain Tiles), z možnostjo 2D
+- 3D teren in senčenje že ob zagonu iz [Mapterhorn](https://mapterhorn.com) (LiDAR 1 m za
+  Slovenijo in Avstrijo, drugje Copernicus GLO-30), z možnostjo 2D
 - 3D oznake vrhov: ime in višina nad vrhom z navpično črto, pritrjeni na teren; izbor glede
   na višino in oddaljenost ter brez prekrivanja
 - iskanje brez povezave po ~23.000 vrhovih, kočah, sedlih in krajih (OSM), ki ne upošteva
@@ -23,7 +24,7 @@ Funkcije:
 ```
 app/              aplikacija: Vite + MapLibre GL JS + Capacitor
   src/main.js       karta, stil, kontrole
-  src/dem.js        protokol dem:// (LiDAR ali AWS) in poizvedba naklona
+  src/dem.js        poizvedba naklona (naše LiDAR ploščice ali Mapterhorn), roža ekspozicij
   src/peaks.js      3D oznake vrhov
   src/search.js     iskanje
   src/location.js   GPS
@@ -98,9 +99,8 @@ Postopek:
 3. `build.py` za vsako območje zloži vire v mrežo D96/TM (BEV prevzorči iz EPSG:3035), zgladi
    (Gauss, privzeto σ = 3 m) in izračuna naklon. Nato izdela ploščice Web Mercator:
    - `tiles/slope/z12–16`: razredi naklona; vsaka povečava je povprečena na velikost piksla
-   - `tiles/dem/z10–15`: višine v kodiranju Terrarium. Na robu podatkov se mehko prelijejo v
-     [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/); ploščice brez LiDAR
-     aplikacija vzame neposredno iz AWS.
+   - `tiles/dem/15`: višine (Terrarium) za poizvedbe naklona, skladne z barvami naklonov. Na
+     robu podatkov se mehko prelijejo v Mapterhorn; drugod aplikacija bere Mapterhorn neposredno.
    - `data/coverage.geojson`: obrisi dejanskih podatkov (npr. samo avstrijska stran meje)
 4. `osm.py` izvozi imenovane vrhove, sedla, koče in kraje prek Overpass API.
 
@@ -117,6 +117,6 @@ Postopek:
 
 - DMR: © GURS, Ciklično lasersko skeniranje Slovenije 2023–2025, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 - DTM Avstrija: © BEV, ALS DTM Höhenraster 1 m, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
-- Višine izven območja LiDAR: AWS Terrain Tiles (Mapzen, SRTM, EU-DEM …)
+- 3D teren: [© Mapterhorn](https://mapterhorn.com/attribution) (ARSO DMR, BEV, Copernicus GLO-30 …)
 - Vrhovi, koče, kraji: © OpenStreetMap sodelavci (ODbL)
 - Podlage: © OpenStreetMap sodelavci, OpenTopoMap (CC-BY-SA)

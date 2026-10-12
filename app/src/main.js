@@ -120,7 +120,6 @@ async function main() {
   const places = rawPlaces.map(([name, type, lng, lat, ele], id) => ({ id, name, type, lng, lat, ele }));
 
   const dem = new Dem(meta, coverage, BASE_URL);
-  dem.registerProtocol();
   await registerSlopeProtocol(meta);
 
   const { style, baseLayerIds } = composeStyle(base, meta, coverage);
