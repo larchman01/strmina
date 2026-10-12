@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="sl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1f2a33">
+  <title>Strmina</title>
+</head>
+<body>
+  <div id="map"></div>
+
+  <header id="top">
+    <div id="searchbar">
+      <span class="search-ico" aria-hidden="true">⌕</span>
+      <input id="q" type="search" placeholder="Išči vrh, kočo, kraj …" autocomplete="off" enterkeyhint="search">
+      <button id="q-clear" class="icon" aria-label="Počisti" hidden>✕</button>
+    </div>
+    <ul id="results" hidden></ul>
+  </header>
+
+  <nav id="fabs">
+    <button id="btn-3d" class="fab" aria-label="Preklopi 2D/3D">2D</button>
+    <button id="btn-layers" class="fab" aria-label="Sloji">≡</button>
+    <button id="btn-locate" class="fab" aria-label="Moja lokacija">◎</button>
+  </nav>
+
+  <section id="readout" hidden>
+    <button id="readout-close" class="icon" aria-label="Zapri">✕</button>
+    <div class="ro-head">
+      <div id="ro-title"></div>
+      <div id="ro-sub"></div>
+    </div>
+    <div class="ro-body">
+      <div class="ro-slope"><span id="ro-chip"></span><span id="ro-slope">–</span></div>
+      <dl>
+        <dt>ekspozicija</dt><dd id="ro-aspect">–</dd>
+        <dt>višina</dt><dd id="ro-elev">–</dd>
+      </dl>
+    </div>
+    <div id="ro-src"></div>
+  </section>
+
+  <section id="layers" hidden>
+    <div class="sheet-head">
+      <b>Sloji</b>
+      <button id="layers-close" class="icon" aria-label="Zapri">✕</button>
+    </div>
+    <div class="legend" id="legend"></div>
+    <label class="row">
+      <span>Prosojnost naklonov</span>
+      <input type="range" id="opacity" min="0" max="1" step="0.05" value="0.6">
+    </label>
+    <div class="row toggles">
+      <label><input type="checkbox" id="t-slope" checked> Nakloni</label>
+      <label><input type="checkbox" id="t-hillshade" checked> Senčenje</label>
+    </div>
+    <div class="row toggles">
+      <span>Podlaga</span>
+      <label><input type="radio" name="base" value="topo" checked> Topo</label>
+      <label><input type="radio" name="base" value="osm"> OSM</label>
+      <label><input type="radio" name="base" value="none"> Brez</label>
+    </div>
+    <p class="note">
+      Nakloni iz LiDAR DMR (0,5 m), zglajeni na ~5 m; teren je posnet brez snega.
+      <strong>Naklon ni ocena plazovne nevarnosti</strong> – preveri
+      <a href="https://meteo.arso.gov.si/met/sl/avalanche/" target="_blank" rel="noopener">plazovni bilten</a>.
+    </p>
+    <p class="attrib">GURS CLSS 2023–25 (CC BY 4.0) · © OpenStreetMap · OpenTopoMap · AWS Terrain Tiles</p>
+  </section>
+
+  <div id="toast" hidden></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

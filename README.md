@@ -1,38 +1,84 @@
 # Strmina
 
-Prototip karte naklonov za turno smučanje in gorništvo v Sloveniji, izdelane iz novih
-LiDAR podatkov **CLSS 2023–2025** (Geodetska uprava RS). Trenutno pokriva **Krvavec**
-(20 km², listi 461–465 × 127–130 v D96/TM).
+Aplikacija za Android in iOS s 3D karto naklonov za turno smučanje in gorništvo, izdelano iz
+LiDAR podatkov **CLSS 2023–2025** (Geodetska uprava RS). Podrobni nakloni iz LiDAR so zaenkrat
+izdelani za **Krvavec** (20 km²). 3D teren, oznake vrhov in iskanje pokrivajo vso Slovenijo
+z obmejnim pasom.
 
-**Preizkusi:** <https://larchman01.github.io/strmina/> (deluje tudi na telefonu, z GPS)
+**Preizkusi v brskalniku:** <https://larchman01.github.io/strmina/>
 
 Funkcije:
+- 3D teren že ob zagonu (LiDAR na Krvavcu, drugje AWS Terrain Tiles), z možnostjo 2D
+- 3D oznake vrhov: ime in višina nad vrhom z navpično črto, pritrjeni na teren; izbor glede
+  na višino in oddaljenost ter brez prekrivanja
+- iskanje brez povezave po ~23.000 vrhovih, kočah, sedlih in krajih (OSM), ki ne upošteva
+  šumnikov; pri malo zadetkih še spletno iskanje (Photon)
 - plast naklonov v razredih 27–30°, 30–35°, 35–40°, 40–45° in >45°
-- tap na karto prikaže naklon, ekspozicijo in nadmorsko višino (izračun v brskalniku iz ploščic DEM)
-- GPS lokacija z naklonom pod tabo
-- senčenje reliefa in 3D teren iz LiDAR DMR
-- podlagi OpenTopoMap in OSM
+- tap na karto ali vrh prikaže naklon, ekspozicijo in višino
+- GPS (Capacitor) z naklonom pod tabo
 
 > ⚠️ Naklon **ni** ocena plazovne nevarnosti. Teren je posnet brez snega. Preveri
 > [plazovni bilten ARSO](https://meteo.arso.gov.si/met/sl/avalanche/).
 
-## Zagon
+## Struktura
+
+```
+app/              aplikacija: Vite + MapLibre GL JS + Capacitor
+  src/main.js       karta, stil, kontrole
+  src/dem.js        protokol dem:// (LiDAR ali AWS) in poizvedba naklona
+  src/peaks.js      3D oznake vrhov
+  src/search.js     iskanje
+  src/location.js   GPS
+  public/tiles      ploščice naklonov in višin
+  public/data       meta.json, coverage.geojson, places.json (OSM)
+  android/          Android projekt (Capacitor)
+scripts/          Python: prenos LiDAR, izdelava ploščic, izvoz OSM
+```
+
+## Razvoj
+
+```bash
+cd app
+npm install
+npm run dev          # http://localhost:5173
+```
+
+### Android
+
+Potrebuješ Android Studio (SDK 36). Z ukazom `npm run sync` zgradiš splet in ga kopiraš v
+Android projekt.
+
+```bash
+cd app
+npm run sync
+npx cap open android      # odpre v Android Studiu → Run
+```
+
+Ali iz ukazne vrstice (APK v `android/app/build/outputs/apk/debug/`):
+
+```bash
+cd app/android
+./gradlew assembleDebug
+```
+
+### iOS
+
+Potrebuješ Mac z Xcode ali gradnjo v oblaku (npr. Codemagic). Na Macu dodaš platformo z
+`npx cap add ios`.
+
+## Podatki
 
 ```bash
 python -m venv .venv
 .venv/Scripts/python -m pip install "laspy[lazrs]" numpy scipy pyproj pillow requests
-.venv/Scripts/python -m http.server 8765 --directory web
-```
 
-Nato odpri <http://localhost:8765>. Ploščice za Krvavec so že v repozitoriju.
+# vrhovi, koče, sedla, kraji iz OSM -> app/public/data/places.json
+.venv/Scripts/python scripts/osm.py
 
-## Izdelava podatkov za drugo območje
-
-```bash
-# 1. prenos listov DMR (.laz, ~5 MB/km²); območje v D96/TM, metri
+# LiDAR DMR (.laz, ~5 MB/km²); območje v D96/TM, metri
 .venv/Scripts/python scripts/download.py --bbox 461000 127000 466000 131000
 
-# 2. naklon + ploščice (web/tiles) in metapodatki (web/data)
+# naklon + ploščice -> app/public/tiles, app/public/data
 .venv/Scripts/python scripts/build.py --smooth 3
 ```
 
@@ -46,16 +92,19 @@ Postopek:
    - `tiles/slope/z12–17`: razredi naklona; vsaka povečava je povprečena na velikost piksla
    - `tiles/dem/z10–15`: višine v kodiranju Terrarium. Izven območja LiDAR so dopolnjene z
      [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/), na robu z mehkim prehodom.
+3. `osm.py` izvozi imenovane vrhove, sedla, koče in kraje prek Overpass API.
 
 ## Naprej
 
-- [ ] cela Slovenija: ~20.000 listov, ploščice v PMTiles na CDN
-- [ ] mobilna aplikacija (Flutter + MapLibre) z offline regijami
-- [ ] ekspozicija kot svoja plast; povezava s plazovnim biltenom
-- [ ] razredi po ATES / ocena izpostavljenosti (izteki plazov)
+- [ ] nakloni za celo Slovenijo (~20.000 listov) v PMTiles; prenos regij za offline
+- [ ] vektorska podlaga za offline (Protomaps / OpenFreeMap)
+- [ ] Avstrija (BEV ALS 1 m, Tirolska 0,5 m) za Karavanke in čezmejne ture
+- [ ] ekspozicija kot svoj sloj; povezava s plazovnim biltenom
+- [ ] iOS gradnja in objava v trgovinah
 
 ## Viri in licence
 
 - DMR: © GURS, Ciklično lasersko skeniranje Slovenije 2023–2025, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
-- Višine izven območja: AWS Terrain Tiles (Mapzen, SRTM, EU-DEM …)
+- Višine izven območja LiDAR: AWS Terrain Tiles (Mapzen, SRTM, EU-DEM …)
+- Vrhovi, koče, kraji: © OpenStreetMap sodelavci (ODbL)
 - Podlage: © OpenStreetMap sodelavci, OpenTopoMap (CC-BY-SA)

@@ -1,6 +1,6 @@
 """Iz prenesenih listov DMR naredi ploščice za spletno karto.
 
-Izhod (v ``web/tiles``):
+Izhod (v ``app/public/tiles``):
   slope/{z}/{x}/{y}.png   razredi naklona (RGBA), Web Mercator, 256 px
   dem/{z}/{x}/{y}.png     višine v kodiranju Terrarium za 3D teren, senčenje in poizvedbe;
                           izven območja LiDAR dopolnjeno z odprtimi ploščicami AWS Terrain Tiles
@@ -24,8 +24,8 @@ from scipy import ndimage
 
 ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = ROOT / "data" / "raw"
-OUT_DIR = ROOT / "web" / "tiles"
-DATA_DIR = ROOT / "web" / "data"
+OUT_DIR = ROOT / "app" / "public" / "tiles"
+DATA_DIR = ROOT / "app" / "public" / "data"
 CACHE_DIR = ROOT / "data" / "cache" / "terrarium"
 
 SRC_RES = 0.5   # mreža DMR v CLSS 2023-25
