@@ -73,6 +73,39 @@ async function registerSlopeProtocol(meta) {
   });
 }
 
+/**
+ * Bolj prizanesljiva gesta za nagib z dvema prstoma. Privzeto MapLibre odloči po 2 px premika,
+ * prsta se morata gibati skoraj navpično (do 45°) in ležati skoraj vodoravno drug ob drugem –
+ * na telefonu se gesta zato pogosto prepozna kot zoom. Poseže v interne metode TwoFingersTouchPitchHandler
+ * (maplibre-gl 6.x); če jih ni, ostane privzeto obnašanje.
+ */
+const PITCH_DECIDE_PX = 5;
+const PITCH_MAX_MOVE_SLANT = 0.6; // |dx| / |dy| – do ~59° od navpičnice
+const PITCH_MAX_FINGER_SLANT = 1.7; // |dy| / |dx| med prstoma – do ~60° od vodoravnice
+const PITCH_LAG_MS = 150;
+
+function relaxTouchPitch(map) {
+  const h = map.touchPitch;
+  if (typeof h?._start !== 'function' || typeof h?.gestureBeginsVertically !== 'function') return;
+  h._start = function (points) {
+    this._lastPoints = points;
+    const d = points[0].sub(points[1]);
+    if (Math.abs(d.y) > Math.abs(d.x) * PITCH_MAX_FINGER_SLANT) this._valid = false; // prsta eden nad drugim
+  };
+  h.gestureBeginsVertically = function (a, b, timeStamp) {
+    if (this._valid !== undefined) return this._valid;
+    const movedA = a.mag() >= PITCH_DECIDE_PX;
+    const movedB = b.mag() >= PITCH_DECIDE_PX;
+    if (!movedA && !movedB) return undefined;
+    if (!movedA || !movedB) {
+      this._firstMove ??= timeStamp;
+      return timeStamp - this._firstMove < PITCH_LAG_MS ? undefined : false;
+    }
+    const vertical = v => Math.abs(v.x) < Math.abs(v.y) / PITCH_MAX_MOVE_SLANT;
+    return a.y > 0 === b.y > 0 && vertical(a) && vertical(b);
+  };
+}
+
 function intersects(a, b) {
   return a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
 }
@@ -106,6 +139,7 @@ async function main() {
   // Kompaktna atribucija je ob zagonu razprta in na telefonu prekrije pol zaslona.
   map.once('load', () => document.querySelector('.maplibregl-compact-show')?.classList.remove('maplibregl-compact-show'));
   map.on('moveend', () => saveCamera(map));
+  relaxTouchPitch(map);
   window.strmina = { map, dem }; // za razhroščevanje
 
   let userPos = null;
