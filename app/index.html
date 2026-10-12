@@ -4,6 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f2f1ed">
+  <meta name="description" content="3D karta naklonov iz LiDAR podatkov za turno smučanje in gorništvo">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Strmina">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="icons/favicon-64.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <title>Strmina</title>
 </head>
 <body>
@@ -67,6 +75,13 @@
     </p>
     <p class="attrib">GURS CLSS 2023–25 · BEV ALS DTM (CC BY 4.0) · © OpenStreetMap · OpenFreeMap · Mapterhorn</p>
   </section>
+
+  <div id="install-hint" hidden>
+    <span>Za celozaslonsko rabo: <b>Deli</b>
+      <svg viewBox="0 0 24 24" aria-label="ikona Deli"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>
+      → <b>Dodaj na začetni zaslon</b></span>
+    <button id="install-hint-close" class="icon" aria-label="Zapri"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+  </div>
 
   <div id="toast" hidden></div>
   <script type="module" src="/src/main.js"></script>

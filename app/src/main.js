@@ -10,6 +10,7 @@ import { Search } from './search.js';
 import { PlaceCard } from './card.js';
 import { Locator } from './location.js';
 import { loadPlaces } from './places.js';
+import { Capacitor } from '@capacitor/core';
 
 const BASE_URL = location.href.replace(/[?#].*$/, '').replace(/[^/]*$/, '');
 const SLOVENIA = [[12.9, 45.1], [17.0, 47.2]];
@@ -348,6 +349,32 @@ function buildLegends(meta) {
   });
 }
 
+/** Spletna različica: service worker in enkratni namig za »Dodaj na začetni zaslon« na iOS. */
+function setupWebApp() {
+  if (Capacitor.isNativePlatform()) return;
+  if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {});
+  }
+  const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+  let dismissed = false;
+  try {
+    dismissed = localStorage.getItem('strmina.installHint') === '1';
+  } catch {
+    /* zasebni način */
+  }
+  if (!ios || standalone || dismissed) return;
+  $('install-hint').hidden = false;
+  $('install-hint-close').addEventListener('click', () => {
+    $('install-hint').hidden = true;
+    try {
+      localStorage.setItem('strmina.installHint', '1');
+    } catch {
+      /* zasebni način */
+    }
+  });
+}
+
 let toastTimer = 0;
 function toast(msg) {
   const el = $('toast');
@@ -357,4 +384,5 @@ function toast(msg) {
   toastTimer = setTimeout(() => (el.hidden = true), 3500);
 }
 
+setupWebApp();
 main();

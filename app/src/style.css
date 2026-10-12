@@ -389,3 +389,23 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   font-size: 13px;
   z-index: 5;
 }
+
+/* --- namig za namestitev (iOS Safari) --- */
+#install-hint {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: calc(10px + var(--safe-bottom));
+  max-width: 420px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px 10px 14px;
+  border-radius: 14px;
+  background: var(--bg-solid);
+  box-shadow: var(--shadow);
+  font-size: 13.5px;
+  z-index: 6;
+}
+#install-hint span { flex: 1; }
+#install-hint svg { width: 15px; height: 15px; vertical-align: -2px; color: var(--accent); }
