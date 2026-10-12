@@ -17,22 +17,66 @@ function intersects(a, b) {
   return a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
 }
 
+/**
+ * Prenese PNG iz aplikacije; vrne null, če ga ni. Razvojni strežnik in nekateri WebView-i za
+ * manjkajočo datoteko vrnejo index.html s statusom 200, zato preverimo podpis PNG.
+ */
+export async function fetchLocalPng(url, signal) {
+  const res = await fetch(url, { signal });
+  if (!res.ok) return null;
+  const buf = await res.arrayBuffer();
+  const sig = new Uint8Array(buf, 0, Math.min(4, buf.byteLength));
+  return sig[0] === 0x89 && sig[1] === 0x50 && sig[2] === 0x4e && sig[3] === 0x47 ? buf : null;
+}
+
+function inRing(lng, lat, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+function inPolygon(lng, lat, rings) {
+  return inRing(lng, lat, rings[0]) && !rings.slice(1).some(r => inRing(lng, lat, r));
+}
+
+/** Ali tile (z/x/y) seka katero od LiDAR območij iz meta.json. */
+export function tileInRegions(meta, z, x, y) {
+  const b = tileBounds(z, x, y);
+  return meta.regions.some(r => intersects(b, r.bounds));
+}
+
 export class Dem {
-  constructor(meta, baseUrl) {
+  /** coverage: GeoJSON z obrisi dejanskih LiDAR podatkov (properties.source). */
+  constructor(meta, coverage, baseUrl) {
     this.meta = meta;
+    this.coverage = coverage;
     this.baseUrl = baseUrl;
-    this.heights = new Map(); // "z/x/y" -> Promise<Float32Array|null>
+    this.heights = new Map(); // "x/y" -> Promise<Float32Array|null>
   }
 
   hasLidar(z, x, y) {
     const [zMin, zMax] = this.meta.dem_zooms;
-    return z >= zMin && z <= zMax && intersects(tileBounds(z, x, y), this.meta.bounds);
+    return z >= zMin && z <= zMax && tileInRegions(this.meta, z, x, y);
+  }
+
+  /** Vir LiDAR v točki (npr. "CLSS 0,5 m") ali null. */
+  lidarAt(lng, lat) {
+    for (const f of this.coverage.features) {
+      const g = f.geometry;
+      const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+      if (polys.some(rings => inPolygon(lng, lat, rings))) return f.properties.source;
+    }
+    return null;
   }
 
   async fetchTile(z, x, y, signal) {
     if (this.hasLidar(z, x, y)) {
-      const res = await fetch(`${this.baseUrl}tiles/dem/${z}/${x}/${y}.png`, { signal });
-      if (res.ok) return res.arrayBuffer();
+      const local = await fetchLocalPng(`${this.baseUrl}tiles/dem/${z}/${x}/${y}.png`, signal);
+      if (local) return local;
     }
     const url = AWS_TERRARIUM.replace('{z}', z).replace('{x}', x).replace('{y}', y);
     const res = await fetch(url, { signal });
@@ -95,12 +139,11 @@ export class Dem {
     const dzdn = -(z[6] + 2 * z[7] + z[8] - (z[0] + 2 * z[1] + z[2])) / (8 * cell); // y slike raste proti jugu
     const slope = (Math.atan(Math.hypot(dzdx, dzdn)) * 180) / Math.PI;
     const azimuth = ((Math.atan2(-dzdx, -dzdn) * 180) / Math.PI + 360) % 360; // smer navzdol
-    const [w, s, e, nn] = this.meta.bounds;
     return {
       slope,
       aspect: slope < 2 ? 'ravno' : ASPECTS[Math.round(azimuth / 45) % 8],
       elevation: z[4],
-      lidar: lng >= w && lng <= e && lat >= s && lat <= nn,
+      source: this.lidarAt(lng, lat),
     };
   }
 }

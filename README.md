@@ -1,9 +1,9 @@
 # Strmina
 
 Aplikacija za Android in iOS s 3D karto naklonov za turno smučanje in gorništvo, izdelano iz
-LiDAR podatkov **CLSS 2023–2025** (Geodetska uprava RS). Podrobni nakloni iz LiDAR so zaenkrat
-izdelani za **Krvavec** (20 km²). 3D teren, oznake vrhov in iskanje pokrivajo vso Slovenijo
-z obmejnim pasom.
+LiDAR podatkov **CLSS 2023–2025** (Geodetska uprava RS) in **ALS DTM** (BEV, Avstrija).
+Podrobni nakloni iz LiDAR so zaenkrat izdelani za **Krvavec** (CLSS) in **avstrijsko stran
+Karavank** (BEV). 3D teren, oznake vrhov in iskanje pokrivajo vso Slovenijo z obmejnim pasom.
 
 **Preizkusi v brskalniku:** <https://larchman01.github.io/strmina/>
 
@@ -75,36 +75,50 @@ python -m venv .venv
 # vrhovi, koče, sedla, kraji iz OSM -> app/public/data/places.json
 .venv/Scripts/python scripts/osm.py
 
-# LiDAR DMR (.laz, ~5 MB/km²); območje v D96/TM, metri
+# Slovenija: LiDAR DMR CLSS (.laz, ~5 MB/km²); območje v D96/TM, metri
 .venv/Scripts/python scripts/download.py --bbox 461000 127000 466000 131000
 
-# naklon + ploščice -> app/public/tiles, app/public/data
+# Avstrija: BEV ALS DTM 1 m, izrez za območje iz scripts/regions.json
+.venv/Scripts/python scripts/download_bev.py karavanke
+
+# naklon + ploščice za vsa območja -> app/public/tiles, app/public/data
 .venv/Scripts/python scripts/build.py --smooth 3
 ```
 
+Območja so v [`scripts/regions.json`](scripts/regions.json): okvir v D96/TM in delovna
+ločljivost (1 m za majhna, 2 m za večja območja). Vsako območje vzame vse vire, ki ga
+pokrivajo; CLSS ima prednost pred BEV.
+
 Postopek:
-1. `download.py` poišče liste prek javnega WFS sloja `tileindex_clss_zdruzeno` na
+1. `download.py` poišče liste CLSS prek javnega WFS sloja `tileindex_clss_zdruzeno` na
    `lift.clss.si` in prenese DMR z `assets.flycom.si`. Med prenosi počaka 3 s, ker strežnik
    ob prehitrih zahtevah vrne 429. Portal priporoča največ 20 prenosov na dan; za večja
-   območja se obrni na GURS.
-2. `build.py` zloži DMR (mreža 0,5 m) v raster, ga povpreči na 1 m, zgladi
+   območja se obrni na GURS. Liste lahko preneseš tudi ročno na [clss.si](https://clss.si)
+   in jih shraniš v `data/raw/`.
+2. `download_bev.py` iz BEV listov 50 × 50 km (Cloud Optimized GeoTIFF, EPSG:3035) prebere
+   samo izrez za območje in ga shrani v `data/raw/bev/`.
+3. `build.py` za vsako območje zloži vire v mrežo D96/TM (BEV prevzorči iz EPSG:3035), zgladi
    (Gauss, privzeto σ = 3 m) in izračuna naklon. Nato izdela ploščice Web Mercator:
-   - `tiles/slope/z12–17`: razredi naklona; vsaka povečava je povprečena na velikost piksla
-   - `tiles/dem/z10–15`: višine v kodiranju Terrarium. Izven območja LiDAR so dopolnjene z
-     [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/), na robu z mehkim prehodom.
-3. `osm.py` izvozi imenovane vrhove, sedla, koče in kraje prek Overpass API.
+   - `tiles/slope/z12–16`: razredi naklona; vsaka povečava je povprečena na velikost piksla
+   - `tiles/dem/z10–15`: višine v kodiranju Terrarium. Na robu podatkov se mehko prelijejo v
+     [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/); ploščice brez LiDAR
+     aplikacija vzame neposredno iz AWS.
+   - `data/coverage.geojson`: obrisi dejanskih podatkov (npr. samo avstrijska stran meje)
+4. `osm.py` izvozi imenovane vrhove, sedla, koče in kraje prek Overpass API.
 
 ## Naprej
 
 - [ ] nakloni za celo Slovenijo (~20.000 listov) v PMTiles; prenos regij za offline
 - [ ] vektorska podlaga za offline (Protomaps / OpenFreeMap)
-- [ ] Avstrija (BEV ALS 1 m, Tirolska 0,5 m) za Karavanke in čezmejne ture
+- [x] Avstrija: Karavanke (BEV ALS 1 m)
+- [ ] cela Avstrija (55 listov BEV, ~20 GB) – potrebno gostovanje ploščic (npr. Cloudflare R2)
 - [ ] ekspozicija kot svoj sloj; povezava s plazovnim biltenom
 - [ ] iOS gradnja in objava v trgovinah
 
 ## Viri in licence
 
 - DMR: © GURS, Ciklično lasersko skeniranje Slovenije 2023–2025, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+- DTM Avstrija: © BEV, ALS DTM Höhenraster 1 m, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
 - Višine izven območja LiDAR: AWS Terrain Tiles (Mapzen, SRTM, EU-DEM …)
 - Vrhovi, koče, kraji: © OpenStreetMap sodelavci (ODbL)
 - Podlage: © OpenStreetMap sodelavci, OpenTopoMap (CC-BY-SA)

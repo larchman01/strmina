@@ -174,6 +174,14 @@ button { font: inherit; color: inherit; }
 .toggles { flex-wrap: wrap; gap: 6px 16px; }
 .toggles label { display: flex; align-items: center; gap: 5px; }
 .toggles > span { color: var(--muted); }
+.chip {
+  border: 1px solid var(--line);
+  background: transparent;
+  border-radius: 14px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+.chip:active { background: var(--line); }
 .note { font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
 .note a { color: var(--accent); }
 .attrib { font-size: 11px; color: var(--muted); margin: 0; }

@@ -1,8 +1,8 @@
-import { Map as MapLibre, NavigationControl, ScaleControl, Marker, setWorkerUrl } from 'maplibre-gl';
+import { Map as MapLibre, NavigationControl, ScaleControl, Marker, setWorkerUrl, addProtocol } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './style.css';
-import { Dem, DEM_MAX_ZOOM } from './dem.js';
+import { Dem, DEM_MAX_ZOOM, fetchLocalPng, tileInRegions } from './dem.js';
 import { PeakLabels } from './peaks.js';
 import { Search, TYPE_LABEL } from './search.js';
 import { Locator } from './location.js';
@@ -38,7 +38,28 @@ async function loadJson(path, fallback) {
   }
 }
 
-function buildStyle(meta) {
+/**
+ * slope://{z}/{x}/{y}: ploščice naklonov iz aplikacije. Območja so razpršena, zato za ploščice
+ * izven njih (ali brez strmega terena) vrnemo prosojno sliko namesto napake 404.
+ */
+async function registerSlopeProtocol(meta) {
+  const canvas = new OffscreenCanvas(1, 1);
+  canvas.getContext('2d'); // brez konteksta convertToBlob vrže napako
+  const empty = await (await canvas.convertToBlob({ type: 'image/png' })).arrayBuffer();
+  addProtocol('slope', async (params, abortController) => {
+    const [z, x, y] = params.url.slice('slope://'.length).split('/').map(Number);
+    if (!tileInRegions(meta, z, x, y)) return { data: empty };
+    try {
+      const png = await fetchLocalPng(`${BASE_URL}tiles/slope/${z}/${x}/${y}.png`, abortController.signal);
+      if (png) return { data: png };
+    } catch (e) {
+      if (e.name === 'AbortError') throw e;
+    }
+    return { data: empty };
+  });
+}
+
+function buildStyle(meta, coverage) {
   const demSource = { type: 'raster-dem', tiles: ['dem://{z}/{x}/{y}'], tileSize: 256, encoding: 'terrarium', maxzoom: DEM_MAX_ZOOM };
   return {
     version: 8,
@@ -54,18 +75,18 @@ function buildStyle(meta) {
     sources: {
       topo: { type: 'raster', tileSize: 256, ...BASEMAPS.topo },
       osm: { type: 'raster', tileSize: 256, ...BASEMAPS.osm },
-      terrain: { ...demSource, attribution: 'Višine: GURS CLSS 2023–25, AWS Terrain Tiles' },
+      terrain: { ...demSource, attribution: 'Višine: GURS CLSS 2023–25, BEV, AWS Terrain Tiles' },
       hillshade: demSource,
       slope: {
         type: 'raster',
-        tiles: [`${BASE_URL}tiles/slope/{z}/{x}/{y}.png`],
+        tiles: ['slope://{z}/{x}/{y}'],
         tileSize: 256,
         minzoom: meta.slope_zooms[0],
         maxzoom: meta.slope_zooms[1],
         bounds: meta.bounds,
-        attribution: 'Nakloni: GURS CLSS 2023–25 (CC BY 4.0)',
+        attribution: 'Nakloni: GURS CLSS 2023–25, BEV ALS DTM (CC BY 4.0)',
       },
-      coverage: { type: 'geojson', data: `${BASE_URL}data/coverage.geojson` },
+      coverage: { type: 'geojson', data: coverage },
     },
     layers: [
       { id: 'bg', type: 'background', paint: { 'background-color': '#e9ebe6' } },
@@ -95,15 +116,20 @@ function slopeColor(meta, slope) {
 }
 
 async function main() {
-  const [meta, rawPlaces] = await Promise.all([loadJson('data/meta.json'), loadJson('data/places.json', [])]);
+  const [meta, coverage, rawPlaces] = await Promise.all([
+    loadJson('data/meta.json'),
+    loadJson('data/coverage.geojson', { type: 'FeatureCollection', features: [] }),
+    loadJson('data/places.json', []),
+  ]);
   const places = rawPlaces.map(([name, type, lng, lat, ele], id) => ({ id, name, type, lng, lat, ele }));
 
-  const dem = new Dem(meta, BASE_URL);
+  const dem = new Dem(meta, coverage, BASE_URL);
   dem.registerProtocol();
+  await registerSlopeProtocol(meta);
 
   const map = new MapLibre({
     container: 'map',
-    style: buildStyle(meta),
+    style: buildStyle(meta, coverage),
     ...START,
     maxPitch: 80,
     maxBounds: SLOVENIA,
@@ -178,6 +204,14 @@ async function main() {
 
   wireLayers(map);
   buildLegend(meta);
+  for (const r of meta.regions) {
+    const btn = Object.assign(document.createElement('button'), { className: 'chip', textContent: r.name, title: r.source });
+    btn.addEventListener('click', () => {
+      $('layers').hidden = true;
+      map.fitBounds(r.bounds, { pitch: map.getTerrain() ? 60 : 0, bearing: map.getBearing(), padding: 40, duration: 2000 });
+    });
+    $('regions').append(btn);
+  }
   readout.onClose = () => pointMarker?.remove();
 }
 
@@ -215,7 +249,7 @@ class Readout {
     $('ro-slope').textContent = `${Math.round(info.slope)}°`;
     $('ro-aspect').textContent = info.aspect;
     $('ro-elev').textContent = `${Math.round(info.elevation)} m`;
-    $('ro-src').textContent = info.lidar ? 'LiDAR 0,5 m' : 'grob model (izven LiDAR)';
+    $('ro-src').textContent = info.source ? `LiDAR · ${info.source}` : 'grob model (izven LiDAR)';
     $('ro-chip').style.background = slopeColor(this.meta, info.slope) ?? 'var(--line)';
   }
 }
