@@ -10,8 +10,11 @@ Funkcije:
   Slovenijo in Avstrijo, drugje Copernicus GLO-30), z možnostjo 2D
 - 3D oznake vrhov: ime in višina nad vrhom z navpično črto, pritrjeni na teren; izbor glede
   na višino in oddaljenost ter brez prekrivanja
-- iskanje brez povezave po ~23.000 vrhovih, kočah, sedlih in krajih (OSM), ki ne upošteva
-  šumnikov; pri malo zadetkih še spletno iskanje (Photon)
+- iskanje brez povezave po ~23.000 vrhovih, kočah, sedlih in krajih (OSM) ter ~180 gorstvih:
+  vsa imena in vzdevki (»Peca« najde Kordeževo glavo, »Terglau« Triglav), brez šumnikov, s
+  toleranco za tipkarske napake in razdaljo; pri malo zadetkih še spletno iskanje (Photon)
+- kartice z »kaj je kje«: skupina in gorovje (Wikidata), država, vzdevki, najbližja koča /
+  najvišji vrh gorstva kot povezava, navigacija in deljenje
 - plast naklonov v razredih 27–30°, 30–35°, 35–40°, 40–45° in >45° **povsod**: na napravi se
   sproti računa iz Mapterhornovih višin (LiDAR 1 m za SI in AT) v ločenih nitih; na območjih z
   novejšim LiDAR (Krvavec CLSS 2023–25, Karavanke BEV) so nakloni predračunani
@@ -106,7 +109,11 @@ Postopek:
    - `tiles/dem/15`: višine (Terrarium) za poizvedbe naklona, skladne z barvami naklonov. Na
      robu podatkov se mehko prelijejo v Mapterhorn; drugod aplikacija bere Mapterhorn neposredno.
    - `data/coverage.geojson`: obrisi dejanskih podatkov (npr. samo avstrijska stran meje)
-4. `osm.py` izvozi imenovane vrhove, sedla, koče in kraje prek Overpass API.
+4. `osm.py` izvozi imenovane vrhove, sedla, koče in kraje prek Overpass API (po delih, s
+   predpomnilnikom v `data/cache/osm`; `--refresh` osveži), državo vsakega kraja, grebene in
+   masive iz OSM ter gorovja iz Wikidata (lastnost P4552 s hierarhijo, npr. Kordeževa glava →
+   Peca → Vzhodne Karavanke → Karavanke). Vrhovi brez zapisa podedujejo skupino najbližjega
+   vrha do 3 km.
 
 ## Naprej
 

@@ -9,6 +9,7 @@ import { PeakLabels } from './peaks.js';
 import { Search } from './search.js';
 import { PlaceCard } from './card.js';
 import { Locator } from './location.js';
+import { loadPlaces } from './places.js';
 
 const BASE_URL = location.href.replace(/[?#].*$/, '').replace(/[^/]*$/, '');
 const SLOVENIA = [[12.9, 45.1], [17.0, 47.2]];
@@ -114,7 +115,7 @@ async function main() {
     loadJson('data/places.json', []),
     loadBaseStyle(),
   ]);
-  const places = rawPlaces.map(([name, type, lng, lat, ele], id) => ({ id, name, type, lng, lat, ele }));
+  const { places, areas } = loadPlaces(rawPlaces);
 
   const dem = new Dem(meta, coverage, BASE_URL);
   await registerSlopeProtocol(meta);
@@ -152,6 +153,7 @@ async function main() {
       pickMarker?.remove();
       labels.pin(null);
     },
+    onOpen: p => openAny(p, true),
   });
   const markPoint = (lng, lat) => {
     pickMarker ??= new Marker({ element: Object.assign(document.createElement('div'), { className: 'pick' }) });
@@ -171,16 +173,35 @@ async function main() {
     if (p.type !== 'peak') markPoint(p.lng, p.lat);
     card.openPlace(p);
   };
+  const openArea = a => {
+    pickMarker?.remove();
+    labels.pin(a.top);
+    const [w, s, e, n] = a.bbox;
+    const pad = 0.01; // ~1 km, da gorstvo z enim vrhom ni povečano do konca
+    map.fitBounds([w - pad, s - pad, e + pad, n + pad], {
+      pitch: map.getTerrain() ? 55 : 0, bearing: map.getBearing(), duration: 2000, maxZoom: 14,
+      padding: { top: 80, bottom: 260, left: 30, right: 70 },
+    });
+    card.openArea(a);
+  };
+  /** Iz iskanja ali povezave na kartici: odleti in odpri kartico. */
+  const openAny = (p, fly) => {
+    if (p.type === 'area') return openArea(p);
+    if (fly) flyToPlace(p);
+    openPlace(p);
+  };
 
   const labels = new PeakLabels(map, places, openPlace, () => ({
     top: $('searchbar').getBoundingClientRect().bottom + 6,
     right: window.innerWidth - $('fabs').getBoundingClientRect().left + 6,
   }));
 
-  new Search({ input: $('q'), clear: $('q-clear'), list: $('results') }, places, p => {
-    flyToPlace(p);
-    openPlace(p);
-  });
+  new Search(
+    { input: $('q'), clear: $('q-clear'), list: $('results') },
+    [...places, ...areas],
+    p => openAny(p, true),
+    () => userPos ?? map.getCenter(),
+  );
 
   map.on('click', ev => {
     $('results').hidden = true;

@@ -1,4 +1,5 @@
 import { ASPECTS } from './dem.js';
+import { contextOf, distanceM, fmtDist } from './places.js';
 
 const ROSE_RADIUS_M = 300;
 const NEAR_HUT_MAX_M = 5000;
@@ -6,6 +7,7 @@ const NEAR_PLACE_MAX_M = 1500;
 
 const ICONS = {
   peak: '<path d="m3 19 6.5-11 3.5 5.5 2-3L21 19Z"/>',
+  area: '<path d="m2 19 5-8 3 4 4-7 8 11Z"/>',
   hut: '<path d="M4 11 12 4l8 7"/><path d="M6 10v9h12v-9"/><path d="M10 19v-5h4v5"/>',
   saddle: '<path d="M3 9c3 0 4 6 9 6s6-6 9-6"/>',
   place: '<circle cx="12" cy="11" r="3"/><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11Z"/>',
@@ -13,11 +15,14 @@ const ICONS = {
   gps: '<circle cx="12" cy="12" r="3.5"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="7"/>',
   nav: '<path d="m3 11 18-8-8 18-2-8Z"/>',
   share: '<path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/>',
+  copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
   close: '<path d="M6 6l12 12M18 6 6 18"/>',
+  chevron: '<path d="m9 6 6 6-6 6"/>',
 };
 
 const KIND = {
   peak: { label: 'Vrh', icon: 'peak' },
+  area: { label: 'Gorstvo', icon: 'area' },
   hut: { label: 'Koča', icon: 'hut' },
   saddle: { label: 'Sedlo', icon: 'saddle' },
   city: { label: 'Mesto', icon: 'place' },
@@ -28,24 +33,14 @@ const KIND = {
   gps: { label: 'Tvoja lokacija', icon: 'gps' },
 };
 
-const svg = (name, cls = '') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
-
-function distanceM(a, b) {
-  const r = Math.PI / 180;
-  const x = (b.lng - a.lng) * r * Math.cos(((a.lat + b.lat) / 2) * r);
-  const y = (b.lat - a.lat) * r;
-  return Math.hypot(x, y) * 6371000;
-}
-
-function fmtDist(m) {
-  return m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(m < 10000 ? 1 : 0).replace('.', ',')} km`;
-}
-
+const svg = name => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
 const fmtCoord = (lng, lat) => `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+const peaksWord = n => `${n} ${n === 1 ? 'vrh' : n === 2 ? 'vrha' : n < 5 ? 'vrhovi' : 'vrhov'}`;
 
-/** Kartica izbranega kraja ali točke (spodnji list). */
+/** Kartica izbranega kraja, gorstva ali točke (spodnji list). */
 export class PlaceCard {
-  constructor({ el, meta, dem, places, getUserPos, toast, onClose }) {
+  /** onOpen(place): odpri drug kraj (najbližjo kočo, najvišji vrh gorstva …). */
+  constructor({ el, meta, dem, places, getUserPos, toast, onClose, onOpen }) {
     this.el = el;
     this.meta = meta;
     this.dem = dem;
@@ -55,12 +50,9 @@ export class PlaceCard {
     this.getUserPos = getUserPos;
     this.toast = toast;
     this.onClose = onClose;
+    this.onOpen = onOpen;
     this.token = 0; // zavrže zastarele asinhrone rezultate
     this.current = null;
-  }
-
-  get open() {
-    return !this.el.hidden;
   }
 
   close() {
@@ -76,36 +68,37 @@ export class PlaceCard {
     return color;
   }
 
+  // --- vrste kartic ---
+
   /** Vrh, koča, sedlo, kraj ali spletni zadetek. */
   async openPlace(p) {
     const showRose = p.type === 'peak' || p.type === 'saddle';
-    const sub = [p.ele != null ? `${p.ele} m` : null, p.detail].filter(Boolean);
-    this.render({ kind: p.type, name: p.name, sub, at: p, rose: showRose, stats: !showRose });
+    const sub = [p.ele != null ? `${p.ele} m` : null, ...contextOf(p), p.detail].filter(Boolean);
+    this.render({ kind: p.type, name: p.name, aliases: p.aliases, sub, at: p, rose: showRose, stats: !showRose });
     const token = this.token;
 
     const near = this.nearest(p);
-    if (near) {
-      this.$('.near').innerHTML = `${svg(near.place.type === 'hut' ? 'hut' : 'peak')}<b></b><span></span>`;
-      this.$('.near').title = near.label;
-      this.$('.near b').textContent = near.place.name;
-      this.$('.near span').textContent = fmtDist(near.dist);
-    }
-    this.$('.near').hidden = !near;
+    if (near) this.setLink(near.place, near.dist, near.label);
 
     const info = await this.dem.query(p.lng, p.lat);
     if (token !== this.token) return;
     this.setSource(info);
     if (!showRose) return this.setStats(info);
-
     const rose = await this.dem.aspectRose(p.lng, p.lat, ROSE_RADIUS_M);
     if (token === this.token) this.setRose(rose);
   }
 
+  /** Gorstvo ali masiv: kam spada, koliko vrhov ima in najvišji vrh. */
+  openArea(a) {
+    this.render({ kind: 'area', name: a.name, aliases: [], sub: [a.major, peaksWord(a.count)].filter(Boolean), at: a, actions: false });
+    if (a.top) this.setLink(a.top, null, 'Najvišji vrh');
+  }
+
   /** Poljubna točka na karti. */
   async openPoint(lng, lat) {
-    const nearby = this.nearestOf(this.places, { lng, lat }, NEAR_PLACE_MAX_M);
-    const name = nearby ? `blizu: ${nearby.place.name}` : 'Izbrana točka';
-    this.render({ kind: 'point', name, sub: [], at: { lng, lat }, stats: true });
+    const near = this.nearestOf(this.places, { lng, lat }, NEAR_PLACE_MAX_M);
+    const sub = near ? [`blizu: ${near.place.name}`, ...contextOf(near.place).slice(0, 1)] : [];
+    this.render({ kind: 'point', name: 'Izbrana točka', aliases: [], sub, at: { lng, lat }, stats: true });
     const token = this.token;
     const info = await this.dem.query(lng, lat);
     if (token !== this.token) return;
@@ -115,10 +108,11 @@ export class PlaceCard {
 
   /** Lokacija uporabnika; ob vsakem novem položaju se osvežijo le številke. */
   async showGps(pos) {
-    if (this.current?.kind !== 'gps') this.render({ kind: 'gps', name: 'Tvoja lokacija', sub: [], at: pos, stats: true, nav: false });
+    if (this.current?.kind !== 'gps') {
+      this.render({ kind: 'gps', name: 'Tvoja lokacija', aliases: [], sub: [], at: pos, stats: true, nav: false });
+    }
     this.current.at = pos;
     this.$('.sub').textContent = pos.accuracy != null ? `± ${Math.round(pos.accuracy)} m` : 'iščem GPS …';
-    this.$('.coords').textContent = fmtCoord(pos.lng, pos.lat);
     if (pos.accuracy == null) return;
     const token = this.token;
     const info = await this.dem.query(pos.lng, pos.lat);
@@ -133,12 +127,12 @@ export class PlaceCard {
     return this.el.querySelector(sel);
   }
 
-  render({ kind, name, sub, at, rose = false, stats = false, nav = true }) {
+  render({ kind, name, aliases, sub, at, rose = false, stats = false, nav = true, actions = true }) {
     this.token++;
     this.current = { kind, name, at };
     const k = KIND[kind] ?? KIND.point;
     const user = this.getUserPos();
-    if (user && kind !== 'gps') sub = [...sub, `${fmtDist(distanceM(user, at))} od tebe`];
+    if (user && kind !== 'gps' && kind !== 'area') sub = [...sub, `${fmtDist(distanceM(user, at))} od tebe`];
 
     this.el.innerHTML = `
       <div class="card-head">
@@ -146,6 +140,7 @@ export class PlaceCard {
         <button class="icon close" aria-label="Zapri">${svg('close')}</button>
       </div>
       <h2 class="name"></h2>
+      <div class="aka" hidden></div>
       <div class="sub"></div>
       <div class="stats" ${stats ? '' : 'hidden'}>
         <div class="stat"><span class="chip"></span><b class="v-slope skel">00°</b><small>naklon</small></div>
@@ -157,26 +152,29 @@ export class PlaceCard {
         <div class="rose-text">
           <b>Strmine okoli vrha</b>
           <span class="r-steepest skel">najbolj strmo 00° · S</span>
-          <span class="r-share skel">nad 30°: 00 % v krogu ${ROSE_RADIUS_M} m</span>
+          <span class="r-share skel">nad 30°: 00 % v ${ROSE_RADIUS_M} m</span>
         </div>
       </div>
-      <div class="near" hidden></div>
-      <div class="card-foot">
-        <button class="coords" title="Kopiraj koordinate"></button>
+      <button class="link" hidden></button>
+      <div class="card-foot" ${actions ? '' : 'hidden'}>
         <span class="src"></span>
         <span class="actions">
-          ${nav ? `<button class="act nav" aria-label="Navigacija">${svg('nav')}</button>` : ''}
+          <button class="act copy" aria-label="Kopiraj koordinate">${svg('copy')}</button>
           <button class="act share" aria-label="Deli">${svg('share')}</button>
+          ${nav ? `<button class="act nav primary" aria-label="Navigacija">${svg('nav')}<span>Pot</span></button>` : ''}
         </span>
       </div>`;
     this.$('.kind span').textContent = k.label;
     this.$('.name').textContent = name;
+    if (aliases?.length) {
+      this.$('.aka').textContent = `tudi ${aliases.slice(0, 3).join(', ')}`;
+      this.$('.aka').hidden = false;
+    }
     this.$('.sub').textContent = sub.join(' · ');
-    this.$('.coords').textContent = fmtCoord(at.lng, at.lat);
     if (rose) this.drawRose(null);
 
     this.$('.close').addEventListener('click', () => this.close());
-    this.$('.coords').addEventListener('click', () => this.copyCoords());
+    this.$('.copy').addEventListener('click', () => this.copyCoords());
     this.$('.nav')?.addEventListener('click', () => this.navigate());
     this.$('.share').addEventListener('click', () => this.share());
 
@@ -186,16 +184,25 @@ export class PlaceCard {
     this.el.classList.add('enter');
   }
 
+  /** Vrstica s povezavo na drug kraj (najbližja koča, najvišji vrh …). */
+  setLink(place, dist, label) {
+    const link = this.$('.link');
+    const right = [place.ele != null ? `${place.ele} m` : null, dist != null ? fmtDist(dist) : null].filter(Boolean).join(' · ');
+    link.innerHTML = `${svg(place.type === 'hut' ? 'hut' : 'peak')}<span class="l-txt"><small></small><b></b></span><span class="l-right"></span>${svg('chevron')}`;
+    link.querySelector('small').textContent = label;
+    link.querySelector('b').textContent = place.name;
+    link.querySelector('.l-right').textContent = right;
+    link.hidden = false;
+    link.addEventListener('click', () => this.onOpen?.(place));
+  }
+
   setStats(info) {
-    const slope = this.$('.v-slope');
     for (const el of this.el.querySelectorAll('.stats .skel')) el.classList.remove('skel');
     if (!info) {
-      slope.textContent = '–';
-      this.$('.v-aspect').textContent = '–';
-      this.$('.v-elev').textContent = '–';
+      for (const sel of ['.v-slope', '.v-aspect', '.v-elev']) this.$(sel).textContent = '–';
       return;
     }
-    slope.textContent = `${Math.round(info.slope)}°`;
+    this.$('.v-slope').textContent = `${Math.round(info.slope)}°`;
     this.$('.v-aspect').textContent = info.aspect;
     this.$('.v-elev').textContent = `${Math.round(info.elevation)} m`;
     this.$('.stats .chip').style.background = this.colorFor(info.slope) ?? 'var(--line)';
@@ -211,7 +218,7 @@ export class PlaceCard {
     this.drawRose(rose);
     const s = rose.steepest;
     this.$('.r-steepest').textContent = s ? `najbolj strmo ${Math.round(s.slope)}° · ${s.aspect}` : 'ni strmin';
-    this.$('.r-share').textContent = `nad 30°: ${Math.round(rose.steepShare * 100)} % v krogu ${rose.radius} m`;
+    this.$('.r-share').textContent = `nad 30°: ${Math.round(rose.steepShare * 100)} % v ${rose.radius} m`;
     for (const el of this.el.querySelectorAll('.rose-text .skel')) el.classList.remove('skel');
   }
 
@@ -277,7 +284,7 @@ export class PlaceCard {
     const { lng, lat } = this.current.at;
     try {
       await navigator.clipboard.writeText(fmtCoord(lng, lat));
-      this.toast('Koordinate kopirane');
+      this.toast(`Kopirano: ${fmtCoord(lng, lat)}`);
     } catch {
       this.toast(fmtCoord(lng, lat));
     }
