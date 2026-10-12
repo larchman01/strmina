@@ -1,10 +1,11 @@
 import { Marker } from 'maplibre-gl';
 
-const MAX_LABELS = 40;
-const STEM_PX = 34;
-const BOX_H = 36;
-const PAD = 6;
+const MAX_LABELS = 8;
+const STEM_PX = 22;
+const BOX_H = 20;
+const PAD = 12;
 const DIST_PENALTY_M_PER_KM = 18; // bližnji vrhovi imajo prednost pred oddaljenimi višjimi
+const MIN_ZOOM = 10.5; // od daleč brez oznak – takrat je v ospredju pokritost z LiDAR
 
 /** 3D oznake vrhov: napis nad vrhom z navpično črto, pritrjen na teren. */
 export class PeakLabels {
@@ -15,7 +16,7 @@ export class PeakLabels {
     this.getInsets = getInsets;
     this.peaks = places
       .filter(p => p.type === 'peak')
-      .map(p => ({ ...p, labelW: Math.max(p.name.length, 6) * 7.2 + 22 }));
+      .map(p => ({ ...p, labelW: p.name.length * 6.6 + (p.ele != null ? 30 : 0) + 16 }));
     this.markers = new Map(); // id -> Marker
     this.pinned = null; // vrh, ki ga je uporabnik izbral, je vedno prikazan
 
@@ -38,9 +39,11 @@ export class PeakLabels {
     const b = map.getBounds();
     const kmPerDegLon = 111.32 * Math.cos((center.lat * Math.PI) / 180);
     const inset = this.getInsets();
+    const far = map.getZoom() < MIN_ZOOM;
 
     const candidates = [];
     for (const p of this.peaks) {
+      if (far && p !== this.pinned) continue;
       if (p.lng < b.getWest() || p.lng > b.getEast() || p.lat < b.getSouth() || p.lat > b.getNorth()) continue;
       const pt = map.project([p.lng, p.lat]);
       const halfW = p.labelW / 2;
@@ -78,7 +81,7 @@ export class PeakLabels {
     el.className = 'peak';
     el.innerHTML = '<div class="peak-box"><b></b><span></span></div><div class="peak-stem"></div><div class="peak-dot"></div>';
     el.querySelector('b').textContent = p.name;
-    el.querySelector('span').textContent = p.ele != null ? `${p.ele} m` : '';
+    el.querySelector('span').textContent = p.ele != null ? String(p.ele) : '';
     el.addEventListener('click', ev => {
       ev.stopPropagation();
       this.onSelect(p);

@@ -1,28 +1,21 @@
-import { Map as MapLibre, NavigationControl, ScaleControl, Marker, setWorkerUrl, addProtocol } from 'maplibre-gl';
+import { Map as MapLibre, Marker, setWorkerUrl, addProtocol } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './style.css';
-import { Dem, DEM_MAX_ZOOM, fetchLocalPng, tileInRegions } from './dem.js';
+import { Dem, fetchLocalPng, tileInRegions } from './dem.js';
+import { loadBaseStyle, composeStyle } from './basemap.js';
 import { PeakLabels } from './peaks.js';
 import { Search, TYPE_LABEL } from './search.js';
 import { Locator } from './location.js';
 
 const BASE_URL = location.href.replace(/[?#].*$/, '').replace(/[^/]*$/, '');
 const SLOVENIA = [[12.9, 45.1], [17.0, 47.2]];
-const START = { center: [14.528, 46.288], zoom: 13.3, pitch: 62, bearing: 20 };
-
-const BASEMAPS = {
-  topo: {
-    tiles: ['a', 'b', 'c'].map(s => `https://${s}.tile.opentopomap.org/{z}/{x}/{y}.png`),
-    maxzoom: 17,
-    attribution: '© <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)',
-  },
-  osm: {
-    tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-    maxzoom: 19,
-    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  },
-};
+// Prvi zagon: pregled vseh LiDAR območij. Kasneje nadaljujemo, kjer je uporabnik končal.
+const OVERVIEW_PITCH = 40;
+const CAMERA_KEY = 'strmina.camera';
+const REGION_TAP_MAX_ZOOM = 11.5; // pod to povečavo tap na območje odleti tja
+const POINT_TAP_MIN_ZOOM = 10; // od daleč tap ne odpre kartice z naklonom
+const LEGEND_MIN_ZOOM = 11.5;
 
 const $ = id => document.getElementById(id);
 
@@ -35,6 +28,26 @@ async function loadJson(path, fallback) {
     return res.ok ? await res.json() : fallback;
   } catch {
     return fallback;
+  }
+}
+
+function savedCamera() {
+  try {
+    const c = JSON.parse(localStorage.getItem(CAMERA_KEY));
+    return c && Array.isArray(c.center) ? c : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveCamera(map) {
+  try {
+    const c = map.getCenter();
+    localStorage.setItem(CAMERA_KEY, JSON.stringify({
+      center: [c.lng, c.lat], zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing(),
+    }));
+  } catch {
+    /* zasebni način ipd. */
   }
 }
 
@@ -59,67 +72,22 @@ async function registerSlopeProtocol(meta) {
   });
 }
 
-function buildStyle(meta, coverage) {
-  const demSource = { type: 'raster-dem', tiles: ['dem://{z}/{x}/{y}'], tileSize: 256, encoding: 'terrarium', maxzoom: DEM_MAX_ZOOM };
-  return {
-    version: 8,
-    sky: {
-      'sky-color': '#7fb2e5',
-      'horizon-color': '#dce8f2',
-      'fog-color': '#e4ecf2',
-      'sky-horizon-blend': 0.6,
-      'horizon-fog-blend': 0.7,
-      'fog-ground-blend': 0.4,
-    },
-    terrain: { source: 'terrain', exaggeration: 1 },
-    sources: {
-      topo: { type: 'raster', tileSize: 256, ...BASEMAPS.topo },
-      osm: { type: 'raster', tileSize: 256, ...BASEMAPS.osm },
-      terrain: { ...demSource, attribution: 'Višine: GURS CLSS 2023–25, BEV, AWS Terrain Tiles' },
-      hillshade: demSource,
-      slope: {
-        type: 'raster',
-        tiles: ['slope://{z}/{x}/{y}'],
-        tileSize: 256,
-        minzoom: meta.slope_zooms[0],
-        maxzoom: meta.slope_zooms[1],
-        bounds: meta.bounds,
-        attribution: 'Nakloni: GURS CLSS 2023–25, BEV ALS DTM (CC BY 4.0)',
-      },
-      coverage: { type: 'geojson', data: coverage },
-    },
-    layers: [
-      { id: 'bg', type: 'background', paint: { 'background-color': '#e9ebe6' } },
-      { id: 'topo', type: 'raster', source: 'topo' },
-      { id: 'osm', type: 'raster', source: 'osm', layout: { visibility: 'none' } },
-      {
-        id: 'hillshade',
-        type: 'hillshade',
-        source: 'hillshade',
-        paint: { 'hillshade-exaggeration': 0.3, 'hillshade-shadow-color': '#2d3a44' },
-      },
-      { id: 'slope', type: 'raster', source: 'slope', paint: { 'raster-opacity': 0.6 } },
-      {
-        id: 'coverage',
-        type: 'line',
-        source: 'coverage',
-        paint: { 'line-color': '#1f2a33', 'line-width': 1.5, 'line-dasharray': [3, 2], 'line-opacity': 0.6 },
-      },
-    ],
-  };
-}
-
 function slopeColor(meta, slope) {
   let color = null;
   for (const c of meta.classes) if (slope >= c.min) color = c.color;
   return color;
 }
 
+function intersects(a, b) {
+  return a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
+}
+
 async function main() {
-  const [meta, coverage, rawPlaces] = await Promise.all([
+  const [meta, coverage, rawPlaces, base] = await Promise.all([
     loadJson('data/meta.json'),
     loadJson('data/coverage.geojson', { type: 'FeatureCollection', features: [] }),
     loadJson('data/places.json', []),
+    loadBaseStyle(),
   ]);
   const places = rawPlaces.map(([name, type, lng, lat, ele], id) => ({ id, name, type, lng, lat, ele }));
 
@@ -127,18 +95,22 @@ async function main() {
   dem.registerProtocol();
   await registerSlopeProtocol(meta);
 
+  const { style, baseLayerIds } = composeStyle(base, meta, coverage);
   const map = new MapLibre({
     container: 'map',
-    style: buildStyle(meta, coverage),
-    ...START,
+    style,
+    ...(savedCamera() ?? {
+      bounds: meta.bounds,
+      pitch: OVERVIEW_PITCH,
+      fitBoundsOptions: { padding: { top: 90, bottom: 60, left: 30, right: 70 }, maxZoom: 11 },
+    }),
     maxPitch: 80,
     maxBounds: SLOVENIA,
     attributionControl: { compact: true },
   });
-  map.addControl(new NavigationControl({ visualizePitch: true, showZoom: false }), 'top-right');
-  map.addControl(new ScaleControl({ unit: 'metric' }), 'bottom-left');
   // Kompaktna atribucija je ob zagonu razprta in na telefonu prekrije pol zaslona.
   map.once('load', () => document.querySelector('.maplibregl-compact-show')?.classList.remove('maplibregl-compact-show'));
+  map.on('moveend', () => saveCamera(map));
   window.strmina = { map, dem }; // za razhroščevanje
 
   const readout = new Readout(meta);
@@ -149,11 +121,14 @@ async function main() {
     readout.loading(title, subtitle);
     readout.show(await dem.query(lng, lat), title, subtitle);
   };
+  readout.onClose = () => pointMarker?.remove();
 
   const flyToPlace = p => {
     const zoom = p.type === 'peak' || p.type === 'saddle' || p.type === 'hut' ? 14.2 : 13;
-    map.flyTo({ center: [p.lng, p.lat], zoom, pitch: map.getPitch() > 20 ? 62 : 0, duration: 2200, essential: true });
+    map.flyTo({ center: [p.lng, p.lat], zoom, pitch: map.getTerrain() ? 60 : 0, duration: 2200, essential: true });
   };
+  const flyToRegion = r =>
+    map.fitBounds(r.bounds, { pitch: map.getTerrain() ? 55 : 0, bearing: map.getBearing(), padding: 40, duration: 2000 });
 
   const labels = new PeakLabels(
     map,
@@ -176,6 +151,13 @@ async function main() {
 
   map.on('click', ev => {
     $('results').hidden = true;
+    $('layers').hidden = true;
+    if (map.getZoom() < REGION_TAP_MAX_ZOOM) {
+      const hit = map.queryRenderedFeatures(ev.point, { layers: ['coverage-fill'] })[0];
+      const region = hit && meta.regions.find(r => r.id === hit.properties.id);
+      if (region) return flyToRegion(region);
+      if (map.getZoom() < POINT_TAP_MIN_ZOOM) return;
+    }
     labels.pin(null);
     showPoint(ev.lngLat.lng, ev.lngLat.lat, 'Izbrana točka');
   });
@@ -184,7 +166,7 @@ async function main() {
     map,
     async pos => {
       if (readout.mode !== 'gps') return;
-      readout.show(await dem.query(pos.lng, pos.lat), 'Tvoja lokacija', `natančnost ${Math.round(pos.accuracy)} m`);
+      readout.show(await dem.query(pos.lng, pos.lat), 'Tvoja lokacija', `± ${Math.round(pos.accuracy)} m`);
     },
     err => toast(err?.message ?? 'Lokacija ni na voljo'),
   );
@@ -202,17 +184,28 @@ async function main() {
     await locator.start();
   });
 
-  wireLayers(map);
-  buildLegend(meta);
+  wireLayers(map, baseLayerIds);
+  wireCompass(map);
+  buildLegends(meta);
   for (const r of meta.regions) {
     const btn = Object.assign(document.createElement('button'), { className: 'chip', textContent: r.name, title: r.source });
     btn.addEventListener('click', () => {
       $('layers').hidden = true;
-      map.fitBounds(r.bounds, { pitch: map.getTerrain() ? 60 : 0, bearing: map.getBearing(), padding: 40, duration: 2000 });
+      flyToRegion(r);
     });
     $('regions').append(btn);
   }
-  readout.onClose = () => pointMarker?.remove();
+
+  // Mini legenda samo, ko so nakloni dejansko na zaslonu.
+  const updateLegend = () => {
+    const b = map.getBounds();
+    const view = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+    const visible = $('t-slope').checked && map.getZoom() >= LEGEND_MIN_ZOOM && meta.regions.some(r => intersects(view, r.bounds));
+    $('mini-legend').hidden = !visible;
+  };
+  map.on('moveend', updateLegend);
+  $('t-slope').addEventListener('change', updateLegend);
+  updateLegend();
 }
 
 class Readout {
@@ -232,6 +225,8 @@ class Readout {
     $('ro-title').textContent = title;
     $('ro-sub').textContent = subtitle;
     $('ro-slope').textContent = '…';
+    $('ro-detail').textContent = '';
+    $('ro-src').textContent = '';
   }
 
   show(info, title, subtitle = '') {
@@ -240,61 +235,89 @@ class Readout {
     $('ro-sub').textContent = subtitle;
     if (!info) {
       $('ro-slope').textContent = '–';
-      $('ro-aspect').textContent = '–';
-      $('ro-elev').textContent = '–';
-      $('ro-src').textContent = 'ni podatkov';
+      $('ro-detail').textContent = 'ni podatkov';
+      $('ro-src').textContent = '';
       $('ro-chip').style.background = 'transparent';
       return;
     }
     $('ro-slope').textContent = `${Math.round(info.slope)}°`;
-    $('ro-aspect').textContent = info.aspect;
-    $('ro-elev').textContent = `${Math.round(info.elevation)} m`;
-    $('ro-src').textContent = info.source ? `LiDAR · ${info.source}` : 'grob model (izven LiDAR)';
+    $('ro-detail').textContent = `${info.aspect} · ${Math.round(info.elevation)} m`;
+    $('ro-src').textContent = info.source ? `LiDAR ${info.source}` : 'grob model';
+    $('ro-src').classList.toggle('coarse', !info.source);
     $('ro-chip').style.background = slopeColor(this.meta, info.slope) ?? 'var(--line)';
   }
 }
 
-function wireLayers(map) {
+function wireLayers(map, baseLayerIds) {
   const sheet = $('layers');
-  $('btn-layers').addEventListener('click', () => {
+  $('btn-layers').addEventListener('click', ev => {
+    ev.stopPropagation();
     sheet.hidden = !sheet.hidden;
   });
   $('layers-close').addEventListener('click', () => {
     sheet.hidden = true;
   });
 
-  const whenReady = fn => (map.isStyleLoaded() ? fn() : map.once('style.load', fn));
-  const vis = (id, on) => whenReady(() => map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'));
+  // map.isStyleLoaded() je false tudi med nalaganjem ploščic, zato si zapomnimo dogodek style.load.
+  let styleReady = false;
+  const pending = [];
+  map.once('style.load', () => {
+    styleReady = true;
+    pending.splice(0).forEach(fn => fn());
+  });
+  const whenReady = fn => (styleReady ? fn() : pending.push(fn));
+  const vis = (id, on) => whenReady(() => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'));
 
   $('opacity').addEventListener('input', ev => whenReady(() => map.setPaintProperty('slope', 'raster-opacity', Number(ev.target.value))));
   $('t-slope').addEventListener('change', ev => vis('slope', ev.target.checked));
   $('t-hillshade').addEventListener('change', ev => vis('hillshade', ev.target.checked));
   document.querySelectorAll('input[name=base]').forEach(r =>
     r.addEventListener('change', ev => {
-      vis('topo', ev.target.value === 'topo');
-      vis('osm', ev.target.value === 'osm');
+      const topo = ev.target.value === 'topo';
+      vis('topo', topo);
+      for (const id of baseLayerIds) vis(id, !topo);
     }),
   );
 
   const btn3d = $('btn-3d');
+  const sync3d = () => btn3d.classList.toggle('on', !!map.getTerrain());
+  whenReady(sync3d);
   btn3d.addEventListener('click', () =>
     whenReady(() => {
       const to3d = !map.getTerrain();
       map.setTerrain(to3d ? { source: 'terrain', exaggeration: 1 } : null);
-      map.easeTo({ pitch: to3d ? 62 : 0, bearing: to3d ? map.getBearing() : 0, duration: 900 });
-      btn3d.textContent = to3d ? '2D' : '3D';
+      map.easeTo({ pitch: to3d ? 60 : 0, bearing: to3d ? map.getBearing() : 0, duration: 900 });
+      sync3d();
     }),
   );
 }
 
-function buildLegend(meta) {
-  const el = $('legend');
+/** Kompas se pokaže le, ko karta ni obrnjena proti severu; tap jo poravna. */
+function wireCompass(map) {
+  const btn = $('btn-compass');
+  const needle = btn.querySelector('svg');
+  const update = () => {
+    const bearing = map.getBearing();
+    btn.hidden = Math.abs(bearing) < 1;
+    needle.style.transform = `rotate(${-bearing}deg)`;
+  };
+  map.on('rotate', update);
+  map.on('load', update);
+  btn.addEventListener('click', () => map.easeTo({ bearing: 0, duration: 600 }));
+}
+
+function buildLegends(meta) {
   meta.classes.forEach((c, i) => {
     const next = meta.classes[i + 1];
-    const div = document.createElement('div');
-    div.style.background = c.color;
-    div.textContent = next ? `${c.min}–${next.min}°` : `>${c.min}°`;
-    el.append(div);
+    const full = document.createElement('div');
+    full.style.background = c.color;
+    full.textContent = next ? `${c.min}–${next.min}°` : `>${c.min}°`;
+    $('legend').append(full);
+
+    const mini = document.createElement('span');
+    mini.style.background = c.color;
+    mini.textContent = next ? c.min : `${c.min}+`;
+    $('mini-legend').append(mini);
   });
 }
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#1f2a33">
+  <meta name="theme-color" content="#f2f1ed">
   <title>Strmina</title>
 </head>
 <body>
@@ -11,44 +11,56 @@
 
   <header id="top">
     <div id="searchbar">
-      <span class="search-ico" aria-hidden="true">⌕</span>
-      <input id="q" type="search" placeholder="Išči vrh, kočo, kraj …" autocomplete="off" enterkeyhint="search">
-      <button id="q-clear" class="icon" aria-label="Počisti" hidden>✕</button>
+      <svg class="search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+      <input id="q" type="search" placeholder="Išči vrh, kočo, kraj" autocomplete="off" enterkeyhint="search">
+      <button id="q-clear" class="icon" aria-label="Počisti" hidden>
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
     </div>
     <ul id="results" hidden></ul>
   </header>
 
   <nav id="fabs">
-    <button id="btn-3d" class="fab" aria-label="Preklopi 2D/3D">2D</button>
-    <button id="btn-layers" class="fab" aria-label="Sloji">≡</button>
-    <button id="btn-locate" class="fab" aria-label="Moja lokacija">◎</button>
+    <div class="fab-group">
+      <button id="btn-layers" aria-label="Sloji">
+        <svg viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></svg>
+      </button>
+      <button id="btn-3d" class="txt" aria-label="3D teren">3D</button>
+      <button id="btn-locate" aria-label="Moja lokacija">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="7"/></svg>
+      </button>
+    </div>
+    <button id="btn-compass" class="fab-single" aria-label="Poravnaj proti severu" hidden>
+      <svg viewBox="0 0 24 24"><path class="n" d="M12 3 15 12H9Z"/><path class="s" d="M12 21 9 12h6Z"/></svg>
+    </button>
   </nav>
 
+  <div id="mini-legend" hidden></div>
+
   <section id="readout" hidden>
-    <button id="readout-close" class="icon" aria-label="Zapri">✕</button>
-    <div class="ro-head">
-      <div id="ro-title"></div>
-      <div id="ro-sub"></div>
+    <button id="readout-close" class="icon" aria-label="Zapri">
+      <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+    <div id="ro-title"></div>
+    <div id="ro-sub"></div>
+    <div class="ro-main">
+      <span id="ro-chip"></span>
+      <span id="ro-slope">–</span>
+      <span id="ro-detail"></span>
+      <span id="ro-src"></span>
     </div>
-    <div class="ro-body">
-      <div class="ro-slope"><span id="ro-chip"></span><span id="ro-slope">–</span></div>
-      <dl>
-        <dt>ekspozicija</dt><dd id="ro-aspect">–</dd>
-        <dt>višina</dt><dd id="ro-elev">–</dd>
-      </dl>
-    </div>
-    <div id="ro-src"></div>
   </section>
 
   <section id="layers" hidden>
     <div class="sheet-head">
       <b>Sloji</b>
-      <button id="layers-close" class="icon" aria-label="Zapri">✕</button>
+      <button id="layers-close" class="icon" aria-label="Zapri">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
     </div>
     <div class="legend" id="legend"></div>
-    <div class="row toggles" id="regions"><span>LiDAR</span></div>
     <label class="row">
-      <span>Prosojnost naklonov</span>
+      <span>Prosojnost</span>
       <input type="range" id="opacity" min="0" max="1" step="0.05" value="0.6">
     </label>
     <div class="row toggles">
@@ -57,16 +69,15 @@
     </div>
     <div class="row toggles">
       <span>Podlaga</span>
-      <label><input type="radio" name="base" value="topo" checked> Topo</label>
-      <label><input type="radio" name="base" value="osm"> OSM</label>
-      <label><input type="radio" name="base" value="none"> Brez</label>
+      <label><input type="radio" name="base" value="minimal" checked> Minimalna</label>
+      <label><input type="radio" name="base" value="topo"> Topo</label>
     </div>
+    <div class="row toggles" id="regions"><span>LiDAR</span></div>
     <p class="note">
-      Nakloni iz LiDAR DMR (0,5 m), zglajeni na ~5 m; teren je posnet brez snega.
-      <strong>Naklon ni ocena plazovne nevarnosti</strong> – preveri
-      <a href="https://meteo.arso.gov.si/met/sl/avalanche/" target="_blank" rel="noopener">plazovni bilten</a>.
+      Naklon iz LiDAR, zglajen na ~5 m, teren brez snega. <strong>Ni ocena plazovne nevarnosti</strong> –
+      preveri <a href="https://meteo.arso.gov.si/met/sl/avalanche/" target="_blank" rel="noopener">plazovni bilten</a>.
     </p>
-    <p class="attrib">GURS CLSS 2023–25 (CC BY 4.0) · © OpenStreetMap · OpenTopoMap · AWS Terrain Tiles</p>
+    <p class="attrib">GURS CLSS 2023–25 · BEV ALS DTM (CC BY 4.0) · © OpenStreetMap · OpenFreeMap · AWS Terrain Tiles</p>
   </section>
 
   <div id="toast" hidden></div>
