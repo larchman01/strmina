@@ -4,3 +4,4 @@ data/raw/
 data/cache/
 *.part
 data/*.log
+dist-apk/
