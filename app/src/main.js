@@ -4,6 +4,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import './style.css';
 import { Dem, fetchLocalPng, tileInRegions } from './dem.js';
 import { loadBaseStyle, composeStyle } from './basemap.js';
+import { registerLiveSlope } from './live-slope.js';
 import { PeakLabels } from './peaks.js';
 import { Search } from './search.js';
 import { PlaceCard } from './card.js';
@@ -16,7 +17,7 @@ const OVERVIEW_PITCH = 40;
 const CAMERA_KEY = 'strmina.camera';
 const REGION_TAP_MAX_ZOOM = 11.5; // pod to povečavo tap na območje odleti tja
 const POINT_TAP_MIN_ZOOM = 10; // od daleč tap ne odpre kartice z naklonom
-const LEGEND_MIN_ZOOM = 11.5;
+const LEGEND_MIN_ZOOM = 12;
 
 const $ = id => document.getElementById(id);
 
@@ -106,10 +107,6 @@ function relaxTouchPitch(map) {
   };
 }
 
-function intersects(a, b) {
-  return a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
-}
-
 async function main() {
   const [meta, coverage, rawPlaces, base] = await Promise.all([
     loadJson('data/meta.json'),
@@ -121,6 +118,7 @@ async function main() {
 
   const dem = new Dem(meta, coverage, BASE_URL);
   await registerSlopeProtocol(meta);
+  registerLiveSlope(meta, coverage);
 
   const { style, baseLayerIds } = composeStyle(base, meta, coverage);
   const map = new MapLibre({
@@ -244,12 +242,9 @@ async function main() {
     $('regions').append(btn);
   }
 
-  // Mini legenda samo, ko so nakloni dejansko na zaslonu.
+  // Mini legenda samo, ko so nakloni na zaslonu (od z12 naprej povsod).
   const updateLegend = () => {
-    const b = map.getBounds();
-    const view = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
-    const visible = $('t-slope').checked && map.getZoom() >= LEGEND_MIN_ZOOM && meta.regions.some(r => intersects(view, r.bounds));
-    $('mini-legend').hidden = !visible;
+    $('mini-legend').hidden = !($('t-slope').checked && map.getZoom() >= LEGEND_MIN_ZOOM);
   };
   map.on('moveend', updateLegend);
   $('t-slope').addEventListener('change', updateLegend);
@@ -276,8 +271,11 @@ function wireLayers(map, baseLayerIds) {
   const whenReady = fn => (styleReady ? fn() : pending.push(fn));
   const vis = (id, on) => whenReady(() => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'));
 
-  $('opacity').addEventListener('input', ev => whenReady(() => map.setPaintProperty('slope', 'raster-opacity', Number(ev.target.value))));
-  $('t-slope').addEventListener('change', ev => vis('slope', ev.target.checked));
+  const SLOPE_LAYERS = ['slope-live', 'slope'];
+  $('opacity').addEventListener('input', ev =>
+    whenReady(() => SLOPE_LAYERS.forEach(id => map.setPaintProperty(id, 'raster-opacity', Number(ev.target.value)))),
+  );
+  $('t-slope').addEventListener('change', ev => SLOPE_LAYERS.forEach(id => vis(id, ev.target.checked)));
   $('t-hillshade').addEventListener('change', ev => vis('hillshade', ev.target.checked));
   document.querySelectorAll('input[name=base]').forEach(r =>
     r.addEventListener('change', ev => {

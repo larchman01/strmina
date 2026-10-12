@@ -12,7 +12,9 @@ Funkcije:
   na višino in oddaljenost ter brez prekrivanja
 - iskanje brez povezave po ~23.000 vrhovih, kočah, sedlih in krajih (OSM), ki ne upošteva
   šumnikov; pri malo zadetkih še spletno iskanje (Photon)
-- plast naklonov v razredih 27–30°, 30–35°, 35–40°, 40–45° in >45°
+- plast naklonov v razredih 27–30°, 30–35°, 35–40°, 40–45° in >45° **povsod**: na napravi se
+  sproti računa iz Mapterhornovih višin (LiDAR 1 m za SI in AT) v ločenih nitih; na območjih z
+  novejšim LiDAR (Krvavec CLSS 2023–25, Karavanke BEV) so nakloni predračunani
 - tap na karto ali vrh prikaže naklon, ekspozicijo in višino
 - GPS (Capacitor) z naklonom pod tabo
 
@@ -25,6 +27,8 @@ Funkcije:
 app/              aplikacija: Vite + MapLibre GL JS + Capacitor
   src/main.js       karta, stil, kontrole
   src/dem.js        poizvedba naklona (naše LiDAR ploščice ali Mapterhorn), roža ekspozicij
+  src/live-slope.js protokol slopelive:// in skupina delavcev za sproten izračun naklonov
+  src/slope-worker.js  izračun ene ploščice naklonov (glajenje, naklon, razredi, izrez območij)
   src/peaks.js      3D oznake vrhov
   src/search.js     iskanje
   src/location.js   GPS
@@ -106,7 +110,9 @@ Postopek:
 
 ## Naprej
 
-- [ ] nakloni za celo Slovenijo (~20.000 listov) v PMTiles; prenos regij za offline
+- [x] nakloni za celo Slovenijo (sproti iz Mapterhorna)
+- [ ] CLSS 2023–25 za celo Slovenijo (naročeno pri GURS, 87 GB) – obdelava po blokih, PMTiles,
+      gostovanje in prenos regij za offline
 - [ ] vektorska podlaga za offline (Protomaps / OpenFreeMap)
 - [x] Avstrija: Karavanke (BEV ALS 1 m)
 - [ ] cela Avstrija (55 listov BEV, ~20 GB) – potrebno gostovanje ploščic (npr. Cloudflare R2)

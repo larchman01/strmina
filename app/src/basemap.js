@@ -33,7 +33,7 @@ function regionLabelPoints(meta) {
     type: 'FeatureCollection',
     features: meta.regions.map(r => ({
       type: 'Feature',
-      properties: { id: r.id, name: r.name },
+      properties: { id: r.id, name: r.name, source: r.source },
       geometry: { type: 'Point', coordinates: [(r.bounds[0] + r.bounds[2]) / 2, (r.bounds[1] + r.bounds[3]) / 2] },
     })),
   };
@@ -76,6 +76,16 @@ export function composeStyle(base, meta, coverage) {
       maxzoom: TERRAIN_MAX_ZOOM,
       attribution: TERRAIN_ATTRIBUTION,
     },
+    // nakloni povsod: sproti iz Mapterhorna (512 px, z11–15 ≈ prikaz z12–16, nato povečava)
+    slopeLive: {
+      type: 'raster',
+      tiles: ['slopelive://{z}/{x}/{y}'],
+      tileSize: TERRAIN_TILE_SIZE,
+      minzoom: 11,
+      maxzoom: 15,
+      attribution: TERRAIN_ATTRIBUTION,
+    },
+    // novejši LiDAR (CLSS, BEV) na izbranih območjih: predračunano
     slope: {
       type: 'raster',
       tiles: ['slope://{z}/{x}/{y}'],
@@ -112,6 +122,7 @@ export function composeStyle(base, meta, coverage) {
         'hillshade-accent-color': '#5b6770',
       },
     },
+    { id: 'slope-live', type: 'raster', source: 'slopeLive', paint: { 'raster-opacity': 0.6, 'raster-fade-duration': 200 } },
     { id: 'slope', type: 'raster', source: 'slope', paint: { 'raster-opacity': 0.6, 'raster-fade-duration': 200 } },
   );
 
@@ -156,7 +167,7 @@ export function composeStyle(base, meta, coverage) {
       source: 'regionLabels',
       maxzoom: 11.5,
       layout: {
-        'text-field': ['format', ['get', 'name'], {}, '\nLiDAR', { 'font-scale': 0.7 }],
+        'text-field': ['format', ['get', 'name'], {}, '\n', {}, ['get', 'source'], { 'font-scale': 0.7 }],
         'text-font': ['Noto Sans Bold'],
         'text-size': 14,
         'text-allow-overlap': true,
