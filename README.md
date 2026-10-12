@@ -5,8 +5,6 @@ LiDAR podatkov **CLSS 2023–2025** (Geodetska uprava RS) in **ALS DTM** (BEV, A
 Podrobni nakloni iz LiDAR so zaenkrat izdelani za **Krvavec** (CLSS) in **avstrijsko stran
 Karavank** (BEV). 3D teren, oznake vrhov in iskanje pokrivajo vso Slovenijo z obmejnim pasom.
 
-**Preizkusi v brskalniku:** <https://larchman01.github.io/strmina/>
-
 Funkcije:
 - 3D teren že ob zagonu (LiDAR na Krvavcu, drugje AWS Terrain Tiles), z možnostjo 2D
 - 3D oznake vrhov: ime in višina nad vrhom z navpično črto, pritrjeni na teren; izbor glede
