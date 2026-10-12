@@ -5,6 +5,8 @@
   --muted: #69747d;
   --line: rgba(0, 0, 0, 0.08);
   --accent: #2563eb;
+  --rose-flat: #e3e6e8;
+  --rose-empty: #f1f3f4;
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 4px 14px rgba(0, 0, 0, 0.08);
   --blur: saturate(1.4) blur(10px);
   --safe-top: env(safe-area-inset-top, 0px);
@@ -19,6 +21,8 @@
     --muted: #98a3ab;
     --line: rgba(255, 255, 255, 0.1);
     --accent: #6ea0ff;
+    --rose-flat: #3a4248;
+    --rose-empty: #2a3035;
   }
 }
 
@@ -42,7 +46,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .icon { all: unset; cursor: pointer; padding: 6px; color: var(--muted); display: grid; place-items: center; }
 .icon svg { width: 18px; height: 18px; }
 
-.panel, #searchbar, #results, .fab-group, .fab-single, #readout, #layers, #mini-legend {
+.panel, #searchbar, #results, .fab-group, .fab-single, #card, #layers, #mini-legend {
   background: var(--bg);
   -webkit-backdrop-filter: var(--blur);
   backdrop-filter: var(--blur);
@@ -162,27 +166,102 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   color: rgba(0, 0, 0, 0.65);
 }
 
-/* --- odčitek naklona --- */
-#readout {
+/* --- kartica kraja --- */
+#card {
   position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: calc(40px + var(--safe-bottom));
-  max-width: 360px;
-  border-radius: 16px;
-  padding: 10px 14px 12px;
+  left: 8px;
+  right: 8px;
+  bottom: calc(8px + var(--safe-bottom));
+  max-width: 400px;
+  border-radius: 20px;
+  padding: 12px 16px 12px;
   z-index: 2;
+  background: var(--bg-solid);
 }
-#readout-close { position: absolute; top: 4px; right: 4px; }
-#ro-title { font-weight: 650; font-size: 15px; padding-right: 28px; }
-#ro-sub { color: var(--muted); font-size: 12.5px; }
-#ro-sub:empty { display: none; }
-.ro-main { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
-#ro-chip { width: 6px; height: 26px; border-radius: 3px; flex: none; }
-#ro-slope { font-size: 28px; font-weight: 750; line-height: 1; letter-spacing: -0.01em; }
-#ro-detail { color: var(--fg); font-size: 14px; }
-#ro-src {
-  margin-left: auto;
+#card.enter { animation: card-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes card-in { from { transform: translateY(16px); opacity: 0; } }
+
+.card-head { display: flex; align-items: center; justify-content: space-between; margin: -2px -8px 0 0; }
+.kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.kind svg { width: 14px; height: 14px; }
+#card .name {
+  margin: 2px 0 0;
+  font-size: 21px;
+  font-weight: 750;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#card .sub { color: var(--muted); font-size: 13.5px; margin-top: 1px; }
+#card .sub:empty { display: none; }
+
+.stats {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  margin-top: 12px;
+  padding: 10px 0 2px;
+  border-top: 1px solid var(--line);
+}
+.stat { display: flex; flex-direction: column; position: relative; }
+.stat + .stat { padding-left: 12px; border-left: 1px solid var(--line); }
+.stat b { font-size: 20px; font-weight: 750; line-height: 1.15; }
+.stat small { color: var(--muted); font-size: 11.5px; }
+.stat .chip { position: absolute; left: -8px; top: 3px; width: 4px; height: 20px; border-radius: 2px; padding: 0; border: 0; }
+.stats .stat:first-child { padding-left: 4px; }
+
+.rose-block {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.rose { width: 92px; height: 92px; flex: none; }
+.rose path { stroke: var(--bg-solid); stroke-width: 0.6; }
+.rose .ring { fill: none; stroke: var(--line); stroke-width: 0.8; stroke-dasharray: 2 2; }
+.rose path.pending { animation: pulse 1.2s ease-in-out infinite; }
+.rose text { font-size: 9px; font-weight: 700; fill: var(--muted); text-anchor: middle; dominant-baseline: central; }
+.rose-text { display: flex; flex-direction: column; gap: 3px; font-size: 13.5px; min-width: 0; }
+.rose-text b { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 700; }
+.r-steepest { font-weight: 650; }
+.r-share { color: var(--muted); font-size: 12.5px; }
+
+.near { display: flex; align-items: center; gap: 7px; margin-top: 10px; font-size: 13.5px; min-width: 0; }
+.near svg { width: 16px; height: 16px; color: var(--muted); flex: none; }
+.near b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.near span { color: var(--muted); margin-left: auto; white-space: nowrap; }
+
+.card-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.coords {
+  all: unset;
+  cursor: pointer;
+  font: 12px/1 ui-monospace, "SF Mono", Consolas, monospace;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.src {
   font-size: 10.5px;
   color: var(--accent);
   border: 1px solid currentColor;
@@ -191,8 +270,24 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   white-space: nowrap;
   opacity: 0.85;
 }
-#ro-src:empty { display: none; }
-#ro-src.coarse { color: var(--muted); }
+.src:empty { display: none; }
+.src.coarse { color: var(--muted); }
+.actions { margin-left: auto; display: flex; gap: 6px; }
+.act {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--line);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.act svg { width: 17px; height: 17px; }
+.act:active { transform: scale(0.94); }
+
+.skel { color: transparent !important; background: var(--line); border-radius: 5px; animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.45; } }
 
 /* --- sloji --- */
 #layers {

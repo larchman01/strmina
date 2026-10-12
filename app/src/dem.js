@@ -4,7 +4,7 @@ import { addProtocol } from 'maplibre-gl';
 const AWS_TERRARIUM = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
 export const DEM_MAX_ZOOM = 15;
 const TILE = 256;
-const ASPECTS = ['S', 'SV', 'V', 'JV', 'J', 'JZ', 'Z', 'SZ'];
+export const ASPECTS = ['S', 'SV', 'V', 'JV', 'J', 'JZ', 'Z', 'SZ'];
 
 function tileBounds(z, x, y) {
   const n = 2 ** z;
@@ -141,9 +141,42 @@ export class Dem {
     const azimuth = ((Math.atan2(-dzdx, -dzdn) * 180) / Math.PI + 360) % 360; // smer navzdol
     return {
       slope,
+      azimuth,
       aspect: slope < 2 ? 'ravno' : ASPECTS[Math.round(azimuth / 45) % 8],
       elevation: z[4],
       source: this.lidarAt(lng, lat),
     };
+  }
+
+  /**
+   * Roža ekspozicij: kako strm je teren na posameznih straneh v krogu okoli točke.
+   * Vzorči na ~15 m; za vsako od 8 ekspozicij vrne 90. percentil naklona.
+   */
+  async aspectRose(lng, lat, radius = 300) {
+    const mLat = 111320;
+    const mLon = 111320 * Math.cos((lat * Math.PI) / 180);
+    const jobs = [];
+    for (let r = 15; r <= radius; r += 15) {
+      const steps = Math.max(8, Math.round((2 * Math.PI * r) / 15));
+      for (let i = 0; i < steps; i++) {
+        const a = (i / steps) * 2 * Math.PI;
+        jobs.push(this.query(lng + (r * Math.sin(a)) / mLon, lat + (r * Math.cos(a)) / mLat));
+      }
+    }
+    const bins = ASPECTS.map(() => []);
+    let steep = 0;
+    let total = 0;
+    for (const q of await Promise.all(jobs)) {
+      if (!q) continue;
+      total++;
+      if (q.slope >= 30) steep++;
+      if (q.slope >= 2) bins[Math.round(q.azimuth / 45) % 8].push(q.slope);
+    }
+    const sectors = bins.map((v, i) => {
+      v.sort((a, b) => a - b);
+      return { aspect: ASPECTS[i], slope: v.length >= 5 ? v[Math.floor(v.length * 0.9)] : null, n: v.length };
+    });
+    const steepest = sectors.reduce((m, s) => (s.slope != null && s.slope > (m?.slope ?? -1) ? s : m), null);
+    return { radius, sectors, steepest, steepShare: total ? steep / total : 0 };
   }
 }

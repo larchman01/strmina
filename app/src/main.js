@@ -5,7 +5,8 @@ import './style.css';
 import { Dem, fetchLocalPng, tileInRegions } from './dem.js';
 import { loadBaseStyle, composeStyle } from './basemap.js';
 import { PeakLabels } from './peaks.js';
-import { Search, TYPE_LABEL } from './search.js';
+import { Search } from './search.js';
+import { PlaceCard } from './card.js';
 import { Locator } from './location.js';
 
 const BASE_URL = location.href.replace(/[?#].*$/, '').replace(/[^/]*$/, '');
@@ -72,12 +73,6 @@ async function registerSlopeProtocol(meta) {
   });
 }
 
-function slopeColor(meta, slope) {
-  let color = null;
-  for (const c of meta.classes) if (slope >= c.min) color = c.color;
-  return color;
-}
-
 function intersects(a, b) {
   return a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
 }
@@ -113,15 +108,24 @@ async function main() {
   map.on('moveend', () => saveCamera(map));
   window.strmina = { map, dem }; // za razhroščevanje
 
-  const readout = new Readout(meta);
-  let pointMarker = null;
-  const showPoint = async (lng, lat, title, subtitle) => {
-    pointMarker ??= new Marker({ element: Object.assign(document.createElement('div'), { className: 'pick' }) });
-    pointMarker.setLngLat([lng, lat]).addTo(map);
-    readout.loading(title, subtitle);
-    readout.show(await dem.query(lng, lat), title, subtitle);
+  let userPos = null;
+  let pickMarker = null;
+  const card = new PlaceCard({
+    el: $('card'),
+    meta,
+    dem,
+    places,
+    getUserPos: () => userPos,
+    toast,
+    onClose: () => {
+      pickMarker?.remove();
+      labels.pin(null);
+    },
+  });
+  const markPoint = (lng, lat) => {
+    pickMarker ??= new Marker({ element: Object.assign(document.createElement('div'), { className: 'pick' }) });
+    pickMarker.setLngLat([lng, lat]).addTo(map);
   };
-  readout.onClose = () => pointMarker?.remove();
 
   const flyToPlace = p => {
     const zoom = p.type === 'peak' || p.type === 'saddle' || p.type === 'hut' ? 14.2 : 13;
@@ -130,23 +134,21 @@ async function main() {
   const flyToRegion = r =>
     map.fitBounds(r.bounds, { pitch: map.getTerrain() ? 55 : 0, bearing: map.getBearing(), padding: 40, duration: 2000 });
 
-  const labels = new PeakLabels(
-    map,
-    places,
-    p => {
-      labels.pin(p);
-      showPoint(p.lng, p.lat, p.name, `vrh${p.ele != null ? ` · ${p.ele} m` : ''}`);
-    },
-    () => ({
-      top: $('searchbar').getBoundingClientRect().bottom + 6,
-      right: window.innerWidth - $('fabs').getBoundingClientRect().left + 6,
-    }),
-  );
+  const openPlace = p => {
+    pickMarker?.remove();
+    labels.pin(p.type === 'peak' ? p : null);
+    if (p.type !== 'peak') markPoint(p.lng, p.lat);
+    card.openPlace(p);
+  };
+
+  const labels = new PeakLabels(map, places, openPlace, () => ({
+    top: $('searchbar').getBoundingClientRect().bottom + 6,
+    right: window.innerWidth - $('fabs').getBoundingClientRect().left + 6,
+  }));
 
   new Search({ input: $('q'), clear: $('q-clear'), list: $('results') }, places, p => {
-    if (p.type === 'peak') labels.pin(p);
     flyToPlace(p);
-    showPoint(p.lng, p.lat, p.name, [TYPE_LABEL[p.type], p.ele != null ? `${p.ele} m` : p.detail].filter(Boolean).join(' · '));
+    openPlace(p);
   });
 
   map.on('click', ev => {
@@ -159,27 +161,40 @@ async function main() {
       if (map.getZoom() < POINT_TAP_MIN_ZOOM) return;
     }
     labels.pin(null);
-    showPoint(ev.lngLat.lng, ev.lngLat.lat, 'Izbrana točka');
+    markPoint(ev.lngLat.lng, ev.lngLat.lat);
+    card.openPoint(ev.lngLat.lng, ev.lngLat.lat);
   });
 
   const locator = new Locator(
     map,
-    async pos => {
-      if (readout.mode !== 'gps') return;
-      readout.show(await dem.query(pos.lng, pos.lat), 'Tvoja lokacija', `± ${Math.round(pos.accuracy)} m`);
+    pos => {
+      userPos = pos;
+      if (card.current?.kind === 'gps') card.showGps(pos);
     },
     err => toast(err?.message ?? 'Lokacija ni na voljo'),
   );
+  const stopLocating = async () => {
+    await locator.stop();
+    userPos = null;
+    $('btn-locate').classList.remove('on');
+  };
   $('btn-locate').addEventListener('click', async () => {
-    if (locator.active) {
-      await locator.stop();
-      readout.mode = 'point';
-      $('btn-locate').classList.remove('on');
+    if (locator.active && card.current?.kind !== 'gps' && userPos) {
+      // sledenje že teče: znova pokaži lokacijo
+      pickMarker?.remove();
+      labels.pin(null);
+      card.showGps(userPos);
+      map.flyTo({ center: [userPos.lng, userPos.lat], duration: 1200 });
       return;
     }
-    readout.mode = 'gps';
-    pointMarker?.remove();
-    readout.loading('Tvoja lokacija', 'iščem GPS …');
+    if (locator.active) {
+      await stopLocating();
+      if (card.current?.kind === 'gps') card.close();
+      return;
+    }
+    pickMarker?.remove();
+    labels.pin(null);
+    card.showGps({ lng: map.getCenter().lng, lat: map.getCenter().lat, accuracy: null });
     $('btn-locate').classList.add('on');
     await locator.start();
   });
@@ -206,46 +221,6 @@ async function main() {
   map.on('moveend', updateLegend);
   $('t-slope').addEventListener('change', updateLegend);
   updateLegend();
-}
-
-class Readout {
-  constructor(meta) {
-    this.meta = meta;
-    this.el = $('readout');
-    this.mode = 'point';
-    this.onClose = null;
-    $('readout-close').addEventListener('click', () => {
-      this.el.hidden = true;
-      this.onClose?.();
-    });
-  }
-
-  loading(title, subtitle = '') {
-    this.el.hidden = false;
-    $('ro-title').textContent = title;
-    $('ro-sub').textContent = subtitle;
-    $('ro-slope').textContent = '…';
-    $('ro-detail').textContent = '';
-    $('ro-src').textContent = '';
-  }
-
-  show(info, title, subtitle = '') {
-    this.el.hidden = false;
-    $('ro-title').textContent = title;
-    $('ro-sub').textContent = subtitle;
-    if (!info) {
-      $('ro-slope').textContent = '–';
-      $('ro-detail').textContent = 'ni podatkov';
-      $('ro-src').textContent = '';
-      $('ro-chip').style.background = 'transparent';
-      return;
-    }
-    $('ro-slope').textContent = `${Math.round(info.slope)}°`;
-    $('ro-detail').textContent = `${info.aspect} · ${Math.round(info.elevation)} m`;
-    $('ro-src').textContent = info.source ? `LiDAR ${info.source}` : 'grob model';
-    $('ro-src').classList.toggle('coarse', !info.source);
-    $('ro-chip').style.background = slopeColor(this.meta, info.slope) ?? 'var(--line)';
-  }
 }
 
 function wireLayers(map, baseLayerIds) {
